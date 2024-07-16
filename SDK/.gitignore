@@ -1,0 +1,6 @@
+out
+build*
+optix*
+compile_commands.json
+.vs
+.cache
