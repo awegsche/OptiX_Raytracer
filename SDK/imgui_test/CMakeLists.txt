@@ -26,9 +26,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+
 OPTIX_add_sample_executable( imgui_test target_name
   optixTriangle.cu
-  optixTriangle.cpp
+  main.cpp
   optixTriangle.h
   OPTIONS -rdc true
   )
