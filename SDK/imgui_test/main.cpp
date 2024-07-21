@@ -14,6 +14,7 @@
 #include <sutil/GLDisplay.h>
 #include <sutil/sutil.h>
 
+#include "cuda_runtime_api.h"
 #include "optixTriangle.h"
 
 #include <array>
@@ -47,8 +48,8 @@ using HitGroupSbtRecord = SbtRecord<HitGroupData>;
 void configureCamera(sutil::Camera &cam, const uint32_t width, const uint32_t height)
 {
     cam.setEye({ 0.0f, 0.0f, 2.0f });
-    cam.setLookat({ 0.0f, 0.0f, 0.0f });
-    cam.setUp({ 0.0f, 1.0f, 3.0f });
+    cam.setLookat({ 0.0f, 0.0f, -10.0f });
+    cam.setUp({ 0.0f, 1.0f, 0.00007f });
     cam.setFovY(45.0f);
     cam.setAspectRatio((float)width / (float)height);
 }
@@ -84,8 +85,14 @@ int main(int argc, char *argv[])
     spdlog::info("hello world");
 
     std::string outfile;
-    int width = 1024;
+
+    const int32_t side_panel_width = 192;
+    const int window_width = 1024;
+    int width = window_width - side_panel_width;
     int height = 768;
+
+    int buf_width = width / 4;
+    int buf_height = height / 4;
 
     try {
         //
@@ -95,6 +102,15 @@ int main(int argc, char *argv[])
         {
             // Initialize CUDA
             CUDA_CHECK(cudaFree(0));
+
+            int driverVersion = 0;
+            int runtimeVersion = 0;
+
+            CUDA_CHECK(cudaDriverGetVersion(&driverVersion));
+            CUDA_CHECK(cudaRuntimeGetVersion(&runtimeVersion));
+
+            spdlog::info(" CUDA driver version: {}", driverVersion);
+            spdlog::info(" CUDA runtim version: {}", runtimeVersion);
 
             // Initialize the OptiX API, loading all API entry points
             OPTIX_CHECK(optixInit());
@@ -128,9 +144,12 @@ int main(int argc, char *argv[])
             accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
             // Triangle build input: simple list of three vertices
+            const std::vector<float3> vertices = make_geometry();
+            /*
             const std::array<float3, 3> vertices = {
                 { { -0.5f, -0.5f, 0.0f }, { 0.5f, -0.5f, 0.0f }, { 0.0f, 0.5f, 0.0f } }
             };
+            */
 
             const size_t vertices_size = sizeof(float3) * vertices.size();
             CUdeviceptr d_vertices = 0;
@@ -338,22 +357,21 @@ int main(int argc, char *argv[])
             sbt.hitgroupRecordCount = 1;
         }
 
-        sutil::CUDAOutputBuffer<uchar4> output_buffer(sutil::CUDAOutputBufferType::CUDA_DEVICE, width, height);
+        sutil::CUDAOutputBuffer<uchar4> output_buffer(sutil::CUDAOutputBufferType::CUDA_DEVICE, buf_width, buf_height);
 
         //
         // launch
         //
-        {
             CUstream stream;
             CUDA_CHECK(cudaStreamCreate(&stream));
 
             sutil::Camera cam;
-            configureCamera(cam, width, height);
+            configureCamera(cam, buf_width, buf_height);
 
             Params params;
             params.image = output_buffer.map();
-            params.image_width = width;
-            params.image_height = height;
+            params.image_width = buf_width;
+            params.image_height = buf_height;
             params.handle = gas_handle;
             params.cam_eye = cam.eye();
             cam.UVWFrame(params.cam_u, params.cam_v, params.cam_w);
@@ -362,22 +380,25 @@ int main(int argc, char *argv[])
             CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_param), sizeof(Params)));
             CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(d_param), &params, sizeof(params), cudaMemcpyHostToDevice));
 
-            OPTIX_CHECK(optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, width, height, /*depth=*/1));
+            OPTIX_CHECK(optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
             CUDA_SYNC_CHECK();
 
             output_buffer.unmap();
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
-        }
 
         //
         // Display results
         //
         {
+            // gui
             sutil::ImageBuffer buffer;
+
             buffer.data = output_buffer.getHostPointer();
-            buffer.width = width;
-            buffer.height = height;
+            buffer.width = buf_width;
+            buffer.height = buf_height;
             buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
+
+
             if (outfile.empty()) {
 
                 //
@@ -391,7 +412,7 @@ int main(int argc, char *argv[])
                 glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);// To make Apple happy -- should not be needed
                 glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-                window = glfwCreateWindow(buffer.width, buffer.height, "sfef", nullptr, nullptr);
+                window = glfwCreateWindow(window_width, height, "sfef", nullptr, nullptr);
                 if (!window) throw std::runtime_error("Failed to create GLFW window");
                 glfwMakeContextCurrent(window);
                 glfwSetKeyCallback(window, keyCallback);
@@ -423,22 +444,81 @@ int main(int argc, char *argv[])
                 ImGui_ImplOpenGL3_Init("#version 130");
 
                 int framebuf_res_x = 0, framebuf_res_y = 0;
+                int step = 0;
                 do {
-                    glfwWaitEvents();
+                    glfwPollEvents();
+                    //glfwWaitEvents();
 
+                    ++step;
+
+                    const float phase = static_cast<float>(step) * 1.0e-2;
+
+                    cam.setEye({ 20.0f * sin(phase), 0.0, 20.0f * cos(phase) - 10.0f });
+
+                    // render
+                    params.image = output_buffer.map();
+                    params.image_width = buf_width;
+                    params.image_height = buf_height;
+                    params.handle = gas_handle;
+                    params.cam_eye = cam.eye();
+                    cam.UVWFrame(params.cam_u, params.cam_v, params.cam_w);
+
+                    CUdeviceptr d_param;
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_param), sizeof(Params)));
+                    CUDA_CHECK(
+                        cudaMemcpy(reinterpret_cast<void *>(d_param), &params, sizeof(params), cudaMemcpyHostToDevice));
+
+                    OPTIX_CHECK(
+                        optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
+                    CUDA_SYNC_CHECK();
+
+                    output_buffer.unmap();
+                    CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
+                        
+            buffer.data = output_buffer.getHostPointer();
+
+                GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, pbo));
+                GL_CHECK(glBufferData(GL_ARRAY_BUFFER,
+                    pixelFormatSize(buffer.pixel_format) * buffer.width * buffer.height,
+                    buffer.data,
+                    GL_STREAM_DRAW));
+                GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, 0));
 
                     ImGui_ImplOpenGL3_NewFrame();
                     ImGui_ImplGlfw_NewFrame();
                     ImGui::NewFrame();
 
-                    ImGui::Begin("hello");
-                    ImGui::Text("fslefsif");
+                    ImGui::SetNextWindowPos({ 0, 0 }, ImGuiCond_::ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(
+                        { static_cast<float>(side_panel_width), static_cast<float>(height) }, ImGuiCond_Always);
+                    ImGui::Begin(
+                        "hello", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+                    {
+                        if (ImGui::CollapsingHeader("Window")) {
+                            ImGui::Text("Window Width: %d", window_width);
+                            ImGui::Text("Window Height: %d", height);
+
+                            ImGui::Text("Buffer Width: %d", width);
+                            ImGui::Text("Buffer Height: %d", height);
+
+                            ImGui::Text("Step: %d", step);
+
+                            ImGui::Text("Camera:");
+                            ImGui::Text("(%.2f, %.2f, %.2f", params.cam_eye.x, params.cam_eye.y, params.cam_eye.z );
+                        }
+                    }
                     ImGui::End();
 
                     ImGui::Render();
 
                     glfwGetFramebufferSize(window, &framebuf_res_x, &framebuf_res_y);
-                    display.display(buffer.width, buffer.height, framebuf_res_x, framebuf_res_y, pbo);
+                    display.display(buffer.width,
+                        buffer.height,
+                        side_panel_width,
+                        0,
+                        framebuf_res_x - side_panel_width,
+                        framebuf_res_y,
+                        pbo);
                     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
                     glfwSwapBuffers(window);
                 } while (!glfwWindowShouldClose(window));

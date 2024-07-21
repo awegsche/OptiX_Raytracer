@@ -523,7 +523,7 @@ void displayBufferWindow( const char* title, const ImageBuffer& buffer )
     {
         glfwWaitEvents();
         glfwGetFramebufferSize( window, &framebuf_res_x, &framebuf_res_y );
-        display.display( buffer.width, buffer.height, framebuf_res_x, framebuf_res_y, pbo );
+        display.display( buffer.width, buffer.height, 0, 0, framebuf_res_x, framebuf_res_y, pbo );
         glfwSwapBuffers( window );
     } while( !glfwWindowShouldClose( window ) );
 

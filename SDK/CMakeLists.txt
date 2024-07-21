@@ -352,6 +352,8 @@ endif()
 # Locate the NVRT distribution.  Search the SDK first, then look in the system.
 set(OptiX_INSTALL_DIR "${CMAKE_SOURCE_DIR}/../" CACHE PATH "Path to OptiX installed location.")
 
+message("OptiX_INSTALL_DIR: ${OptiX_INSTALL_DIR}")
+
 # Search for the OptiX libraries and include files.
 find_package(OptiX REQUIRED)
 

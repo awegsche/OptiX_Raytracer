@@ -28,6 +28,7 @@
 
 #include <optix.h>
 
+#include "internal/optix_micromap_impl.h"
 #include "optixTriangle.h"
 #include <cuda/helpers.h>
 
@@ -99,8 +100,14 @@ extern "C" __global__ void __raygen__rg()
 
 extern "C" __global__ void __miss__ms()
 {
-    MissData* miss_data  = reinterpret_cast<MissData*>( optixGetSbtDataPointer() );
-    setPayload(  miss_data->bg_color );
+    const uint3 idx = optixGetLaunchIndex();
+    const uint3 dim = optixGetLaunchDimensions();
+    //MissData* miss_data  = reinterpret_cast<MissData*>( optixGetSbtDataPointer() );
+    float3 result;
+    result.x = static_cast<float>(idx.x) / static_cast<float>(dim.x);
+    result.y = static_cast<float>(idx.y) / static_cast<float>(dim.y);
+    result.z = static_cast<float>(idx.z) / static_cast<float>(dim.z);
+    setPayload(result);
 }
 
 

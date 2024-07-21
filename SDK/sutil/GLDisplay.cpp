@@ -213,13 +213,15 @@ GLDisplay::GLDisplay( BufferImageFormat image_format )
 void GLDisplay::display(
         const int32_t  screen_res_x,
         const int32_t  screen_res_y,
+        const int32_t  framebuf_offset_x,
+        const int32_t  framebuf_offset_y,
         const int32_t  framebuf_res_x,
         const int32_t  framebuf_res_y,
         const uint32_t pbo
         ) const
 {
     GL_CHECK( glBindFramebuffer( GL_FRAMEBUFFER, 0 ) );
-    GL_CHECK( glViewport( 0, 0, framebuf_res_x, framebuf_res_y ) );
+    GL_CHECK( glViewport( framebuf_offset_x, framebuf_offset_y, framebuf_res_x, framebuf_res_y ) );
 
     GL_CHECK( glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT ) );
 
