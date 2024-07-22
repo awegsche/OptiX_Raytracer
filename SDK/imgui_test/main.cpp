@@ -82,8 +82,6 @@ static void keyCallback(GLFWwindow *window, int32_t key, int32_t /*scancode*/, i
 
 int main(int argc, char *argv[])
 {
-    spdlog::info("hello world");
-
     std::string outfile;
 
     const int32_t side_panel_width = 192;
@@ -491,8 +489,11 @@ int main(int argc, char *argv[])
                     ImGui::SetNextWindowPos({ 0, 0 }, ImGuiCond_::ImGuiCond_Always);
                     ImGui::SetNextWindowSize(
                         { static_cast<float>(side_panel_width), static_cast<float>(height) }, ImGuiCond_Always);
-                    ImGui::Begin(
-                        "hello", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+                    #ifdef NDEBUG
+                    ImGui::Begin("Release", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+                    #else
+                    ImGui::Begin("Debug", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+                    #endif
                     {
                         if (ImGui::CollapsingHeader("Window")) {
                             ImGui::Text("Window Width: %d", window_width);
