@@ -28,6 +28,8 @@
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
+find_package(assimp CONFIG REQUIRED)
+
 OPTIX_add_sample_executable( imgui_test target_name
   optixTriangle.cu
   main.cpp
@@ -38,4 +40,5 @@ OPTIX_add_sample_executable( imgui_test target_name
 target_link_libraries( ${target_name}
   ${CUDA_LIBRARIES}
   spdlog::spdlog
+  assimp::assimp
   )

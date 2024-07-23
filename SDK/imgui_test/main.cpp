@@ -1,4 +1,6 @@
 
+#include <algorithm>
+#include <fmt/core.h>
 #include <optix.h>
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
@@ -15,6 +17,7 @@
 #include <sutil/sutil.h>
 
 #include "cuda_runtime_api.h"
+#include "driver_types.h"
 #include "optixTriangle.h"
 
 #include <array>
@@ -35,6 +38,11 @@
 
 using sutil::GLDisplay;
 
+constexpr int DOWNSAMPLING = 2;
+constexpr int32_t side_panel_width = 256;
+constexpr int window_width = 1024;
+constexpr int window_height = 768;
+
 template<typename T> struct SbtRecord
 {
     __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
@@ -48,7 +56,7 @@ using HitGroupSbtRecord = SbtRecord<HitGroupData>;
 void configureCamera(sutil::Camera &cam, const uint32_t width, const uint32_t height)
 {
     cam.setEye({ 0.0f, 0.0f, 2.0f });
-    cam.setLookat({ 0.0f, 0.0f, -10.0f });
+    cam.setLookat({ 0.0f, 0.0f, 0.0f });
     cam.setUp({ 0.0f, 1.0f, 0.00007f });
     cam.setFovY(45.0f);
     cam.setAspectRatio((float)width / (float)height);
@@ -84,13 +92,13 @@ int main(int argc, char *argv[])
 {
     std::string outfile;
 
-    const int32_t side_panel_width = 192;
-    const int window_width = 1024;
+    float fov = 45.0f;
+    float fod = 1.0f;
     int width = window_width - side_panel_width;
-    int height = 768;
+    int height = window_height;
 
-    int buf_width = width / 4;
-    int buf_height = height / 4;
+    int buf_width = width / DOWNSAMPLING;
+    int buf_height = height / DOWNSAMPLING;
 
     try {
         //
@@ -142,7 +150,13 @@ int main(int argc, char *argv[])
             accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
             // Triangle build input: simple list of three vertices
-            const std::vector<float3> vertices = make_geometry();
+            const auto vertices = load_assimp("C:/Users/andiw/3D Objects/bunny/reconstruction/bun_zipper.ply");
+
+            if (vertices.size() == 0) {
+                spdlog::error("couldn't load model. ABORT");
+                return -1;
+            }
+            // const std::vector<float3> vertices = make_geometry();
             /*
             const std::array<float3, 3> vertices = {
                 { { -0.5f, -0.5f, 0.0f }, { 0.5f, -0.5f, 0.0f }, { 0.0f, 0.5f, 0.0f } }
@@ -317,7 +331,7 @@ int main(int argc, char *argv[])
         }
 
         //
-        // Set up shader binding table
+        spdlog::info("Set up shader binding table");
         //
         OptixShaderBindingTable sbt = {};
         {
@@ -357,32 +371,51 @@ int main(int argc, char *argv[])
 
         sutil::CUDAOutputBuffer<uchar4> output_buffer(sutil::CUDAOutputBufferType::CUDA_DEVICE, buf_width, buf_height);
 
-        //
-        // launch
-        //
-            CUstream stream;
-            CUDA_CHECK(cudaStreamCreate(&stream));
+        CUstream stream;
+        CUDA_CHECK(cudaStreamCreate(&stream));
 
-            sutil::Camera cam;
-            configureCamera(cam, buf_width, buf_height);
+        sutil::Camera cam;
+        configureCamera(cam, buf_width, buf_height);
 
-            Params params;
-            params.image = output_buffer.map();
-            params.image_width = buf_width;
-            params.image_height = buf_height;
-            params.handle = gas_handle;
-            params.cam_eye = cam.eye();
-            cam.UVWFrame(params.cam_u, params.cam_v, params.cam_w);
+        spdlog::info("Params");
+        Params params;
+        params.dirty = true;
+        params.tfactor = 0.5f;
+        params.aperture = 0.01f;
+        params.dt = 0;
 
-            CUdeviceptr d_param;
-            CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_param), sizeof(Params)));
-            CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(d_param), &params, sizeof(params), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMalloc(&params.film, sizeof(float3) * buf_width * buf_height));
 
-            OPTIX_CHECK(optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
-            CUDA_SYNC_CHECK();
+        spdlog::info("setup zero film");
+        {
+            std::vector<float> zero_film;
+            zero_film.resize(buf_width * buf_height * 3, 0.0f);
+            spdlog::info("zero film size: {}", zero_film.size());
 
-            output_buffer.unmap();
-            CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
+            // std::fill(zero_film.begin(), zero_film.end(), 0.0f);
+
+            CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(params.film),
+                zero_film.data(),
+                sizeof(float) * zero_film.size(),
+                cudaMemcpyHostToDevice));
+            spdlog::info("setup zero film");
+        }
+        params.image = output_buffer.map();
+        params.image_width = buf_width;
+        params.image_height = buf_height;
+        params.handle = gas_handle;
+        params.cam_eye = cam.eye();
+        cam.UVWFrame(params.cam_u, params.cam_v, params.cam_w);
+
+        CUdeviceptr d_param;
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_param), sizeof(Params)));
+        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(d_param), &params, sizeof(params), cudaMemcpyHostToDevice));
+
+        OPTIX_CHECK(optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
+        CUDA_SYNC_CHECK();
+
+        output_buffer.unmap();
+        CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
 
         //
         // Display results
@@ -445,15 +478,16 @@ int main(int argc, char *argv[])
                 int step = 0;
                 do {
                     glfwPollEvents();
-                    //glfwWaitEvents();
+                    // glfwWaitEvents();
 
                     ++step;
 
-                    const float phase = static_cast<float>(step) * 1.0e-2;
+                    const float phase = 0;// static_cast<float>(step) * 1.0e-2;
 
-                    cam.setEye({ 20.0f * sin(phase), 0.0, 20.0f * cos(phase) - 10.0f });
+                    cam.setEye({ 2.0f * sin(phase), 1.0f, 2.0f * cos(phase) });
 
                     // render
+                    ++params.dt;
                     params.image = output_buffer.map();
                     params.image_width = buf_width;
                     params.image_height = buf_height;
@@ -461,26 +495,27 @@ int main(int argc, char *argv[])
                     params.cam_eye = cam.eye();
                     cam.UVWFrame(params.cam_u, params.cam_v, params.cam_w);
 
+
                     CUdeviceptr d_param;
                     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_param), sizeof(Params)));
                     CUDA_CHECK(
                         cudaMemcpy(reinterpret_cast<void *>(d_param), &params, sizeof(params), cudaMemcpyHostToDevice));
 
-                    OPTIX_CHECK(
-                        optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
+                    OPTIX_CHECK(optixLaunch(
+                        pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
                     CUDA_SYNC_CHECK();
 
                     output_buffer.unmap();
                     CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
-                        
-            buffer.data = output_buffer.getHostPointer();
 
-                GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, pbo));
-                GL_CHECK(glBufferData(GL_ARRAY_BUFFER,
-                    pixelFormatSize(buffer.pixel_format) * buffer.width * buffer.height,
-                    buffer.data,
-                    GL_STREAM_DRAW));
-                GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, 0));
+                    buffer.data = output_buffer.getHostPointer();
+
+                    GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, pbo));
+                    GL_CHECK(glBufferData(GL_ARRAY_BUFFER,
+                        pixelFormatSize(buffer.pixel_format) * buffer.width * buffer.height,
+                        buffer.data,
+                        GL_STREAM_DRAW));
+                    GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, 0));
 
                     ImGui_ImplOpenGL3_NewFrame();
                     ImGui_ImplGlfw_NewFrame();
@@ -489,11 +524,16 @@ int main(int argc, char *argv[])
                     ImGui::SetNextWindowPos({ 0, 0 }, ImGuiCond_::ImGuiCond_Always);
                     ImGui::SetNextWindowSize(
                         { static_cast<float>(side_panel_width), static_cast<float>(height) }, ImGuiCond_Always);
-                    #ifdef NDEBUG
-                    ImGui::Begin("Release", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-                    #else
-                    ImGui::Begin("Debug", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-                    #endif
+
+                    params.dirty = false;
+#ifdef NDEBUG
+                    ImGui::Begin("Release",
+                        0,
+                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+#else
+                    ImGui::Begin(
+                        "Debug", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+#endif
                     {
                         if (ImGui::CollapsingHeader("Window")) {
                             ImGui::Text("Window Width: %d", window_width);
@@ -505,12 +545,25 @@ int main(int argc, char *argv[])
                             ImGui::Text("Step: %d", step);
 
                             ImGui::Text("Camera:");
-                            ImGui::Text("(%.2f, %.2f, %.2f", params.cam_eye.x, params.cam_eye.y, params.cam_eye.z );
+                            ImGui::Text("(%.2f, %.2f, %.2f", params.cam_eye.x, params.cam_eye.y, params.cam_eye.z);
                         }
+                    }
+
+                    if (ImGui::CollapsingHeader("Settings")) {
+                        params.dirty |= ImGui::Checkbox("Orthographic", &params.ortho);
+                        params.dirty |= ImGui::SliderFloat("T Factor", &params.tfactor, 0.0, 1.0);
+                        params.dirty |= ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
+                        params.dirty |= ImGui::SliderFloat("Aperture", &params.aperture, 0.001f, 0.1f);
+                        params.dirty |= ImGui::SliderFloat("Focal length", &fod, 0.2f, 10.0f);
                     }
                     ImGui::End();
 
                     ImGui::Render();
+
+                    cam.setFovY(fov);
+                    cam.setFocalLength(fod);
+                    if (params.dirty) params.dt = 0;
+                    // cam.
 
                     glfwGetFramebufferSize(window, &framebuf_res_x, &framebuf_res_y);
                     display.display(buffer.width,
@@ -538,6 +591,7 @@ int main(int argc, char *argv[])
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(sbt.missRecordBase)));
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(sbt.hitgroupRecordBase)));
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_gas_output_buffer)));
+            CUDA_CHECK(cudaFree(params.film));
 
             OPTIX_CHECK(optixPipelineDestroy(pipeline));
             OPTIX_CHECK(optixProgramGroupDestroy(hitgroup_prog_group));
