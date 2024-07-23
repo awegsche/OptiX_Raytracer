@@ -31,10 +31,11 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 find_package(assimp CONFIG REQUIRED)
 
 OPTIX_add_sample_executable( imgui_test target_name
+  device.cpp
+  triangle_gas.cpp
   optixTriangle.cu
   main.cpp
   optixTriangle.h
-  device.cpp
   OPTIONS -rdc true
   )
 

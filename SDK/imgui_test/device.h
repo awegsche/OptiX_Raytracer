@@ -1,7 +1,9 @@
+#ifndef __DEVICE_H__
+#define __DEVICE_H__
+
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 #include <optix.h>
-
 
 class Device
 {
@@ -18,3 +20,5 @@ class Device
     int m_driver_version{ 0 };
     int m_runtime_version{ 0 };
 };
+
+#endif
