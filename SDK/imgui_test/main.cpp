@@ -35,6 +35,7 @@
 #include <spdlog/spdlog.h>
 
 #include "make_geometry.h"
+#include "device.h"
 
 using sutil::GLDisplay;
 
@@ -71,10 +72,6 @@ void initGL()
     GL_CHECK(glClear(GL_COLOR_BUFFER_BIT));
 }
 
-static void context_log_cb(unsigned int level, const char *tag, const char *message, void * /*cbdata */)
-{
-    spdlog::info("{:3} | {:12} | {}", level, message, tag);
-}
 
 static void errorCallback(int error, const char *description)
 {
@@ -101,41 +98,8 @@ int main(int argc, char *argv[])
     int buf_height = height / DOWNSAMPLING;
 
     try {
-        //
-        spdlog::info("Initialize CUDA and create OptiX context");
-        //
-        OptixDeviceContext context = nullptr;
-        {
-            // Initialize CUDA
-            CUDA_CHECK(cudaFree(0));
 
-            int driverVersion = 0;
-            int runtimeVersion = 0;
-
-            CUDA_CHECK(cudaDriverGetVersion(&driverVersion));
-            CUDA_CHECK(cudaRuntimeGetVersion(&runtimeVersion));
-
-            spdlog::info(" CUDA driver version: {}", driverVersion);
-            spdlog::info(" CUDA runtim version: {}", runtimeVersion);
-
-            // Initialize the OptiX API, loading all API entry points
-            OPTIX_CHECK(optixInit());
-
-            // Specify context options
-            OptixDeviceContextOptions options = {};
-            options.logCallbackFunction = &context_log_cb;
-            options.logCallbackLevel = 4;
-#ifdef DEBUG
-            // This may incur significant performance cost and should only be done during development.
-            options.validationMode = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL;
-#endif
-
-            // Associate a CUDA context (and therefore a specific GPU) with this
-            // device context
-            CUcontext cuCtx = 0;// zero means take the current context
-            OPTIX_CHECK(optixDeviceContextCreate(cuCtx, &options, &context));
-        }
-
+        Device device;
 
         //
         spdlog::info("accel handling");
@@ -180,7 +144,7 @@ int main(int argc, char *argv[])
             triangle_input.triangleArray.numSbtRecords = 1;
 
             OptixAccelBufferSizes gas_buffer_sizes;
-            OPTIX_CHECK(optixAccelComputeMemoryUsage(context,
+            OPTIX_CHECK(optixAccelComputeMemoryUsage(device.get_context(),
                 &accel_options,
                 &triangle_input,
                 1,// Number of build inputs
@@ -189,7 +153,7 @@ int main(int argc, char *argv[])
             CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_temp_buffer_gas), gas_buffer_sizes.tempSizeInBytes));
             CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_gas_output_buffer), gas_buffer_sizes.outputSizeInBytes));
 
-            OPTIX_CHECK(optixAccelBuild(context,
+            OPTIX_CHECK(optixAccelBuild(device.get_context(),
                 0,// CUDA stream
                 &accel_options,
                 &triangle_input,
@@ -232,7 +196,7 @@ int main(int argc, char *argv[])
             size_t inputSize = 0;
             const char *input = sutil::getInputData(OPTIX_SAMPLE_NAME, OPTIX_SAMPLE_DIR, "optixTriangle.cu", inputSize);
 
-            OPTIX_CHECK_LOG(optixModuleCreate(context,
+            OPTIX_CHECK_LOG(optixModuleCreate(device.get_context(),
                 &module_compile_options,
                 &pipeline_compile_options,
                 input,
@@ -255,7 +219,7 @@ int main(int argc, char *argv[])
             raygen_prog_group_desc.kind = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
             raygen_prog_group_desc.raygen.module = module;
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__rg";
-            OPTIX_CHECK_LOG(optixProgramGroupCreate(context,
+            OPTIX_CHECK_LOG(optixProgramGroupCreate(device.get_context(),
                 &raygen_prog_group_desc,
                 1,// num program groups
                 &program_group_options,
@@ -267,7 +231,7 @@ int main(int argc, char *argv[])
             miss_prog_group_desc.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
             miss_prog_group_desc.miss.module = module;
             miss_prog_group_desc.miss.entryFunctionName = "__miss__ms";
-            OPTIX_CHECK_LOG(optixProgramGroupCreate(context,
+            OPTIX_CHECK_LOG(optixProgramGroupCreate(device.get_context(),
                 &miss_prog_group_desc,
                 1,// num program groups
                 &program_group_options,
@@ -279,7 +243,7 @@ int main(int argc, char *argv[])
             hitgroup_prog_group_desc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
             hitgroup_prog_group_desc.hitgroup.moduleCH = module;
             hitgroup_prog_group_desc.hitgroup.entryFunctionNameCH = "__closesthit__ch";
-            OPTIX_CHECK_LOG(optixProgramGroupCreate(context,
+            OPTIX_CHECK_LOG(optixProgramGroupCreate(device.get_context(),
                 &hitgroup_prog_group_desc,
                 1,// num program groups
                 &program_group_options,
@@ -298,7 +262,7 @@ int main(int argc, char *argv[])
 
             OptixPipelineLinkOptions pipeline_link_options = {};
             pipeline_link_options.maxTraceDepth = max_trace_depth;
-            OPTIX_CHECK_LOG(optixPipelineCreate(context,
+            OPTIX_CHECK_LOG(optixPipelineCreate(device.get_context(),
                 &pipeline_compile_options,
                 &pipeline_link_options,
                 program_groups,
@@ -556,6 +520,10 @@ int main(int argc, char *argv[])
                         params.dirty |= ImGui::SliderFloat("Aperture", &params.aperture, 0.001f, 0.1f);
                         params.dirty |= ImGui::SliderFloat("Focal length", &fod, 0.2f, 10.0f);
                     }
+
+
+                    device.imgui();
+
                     ImGui::End();
 
                     ImGui::Render();
@@ -599,7 +567,7 @@ int main(int argc, char *argv[])
             OPTIX_CHECK(optixProgramGroupDestroy(raygen_prog_group));
             OPTIX_CHECK(optixModuleDestroy(module));
 
-            OPTIX_CHECK(optixDeviceContextDestroy(context));
+            OPTIX_CHECK(optixDeviceContextDestroy(device.get_context()));
         }
     } catch (std::exception &e) {
         std::cerr << "Caught exception: " << e.what() << "\n";
