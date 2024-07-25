@@ -27,20 +27,38 @@
 //
 //
 #include "camera.h"
+#include "cuda_runtime_api.h"
 #include "optix_types.h"
 #include "vector_types.h"
 
 struct Params
 {
-    Camera *camera = nullptr;
-    bool dirty = true; // redraw?
-    uchar4 *image = nullptr;
-    float3 *film = nullptr;
+    // settings
     unsigned int image_width = 400;
     unsigned int image_height = 300;
+
+    Camera *camera = nullptr;
+
+    // state 
     unsigned int dt = 0;
+    bool dirty = true; // redraw?
+
+    // buffers
+    uchar4 *image = nullptr;
+    float3 *film = nullptr;
+
     float tfactor = 1.0;
     OptixTraversableHandle handle = 0;
+
+    // geometry data
+    float3* normals = nullptr;
+    float3* vertices = nullptr;
+
+    static void cleanup(Params& params) {
+        cudaFree(params.film);
+        cudaFree(params.camera);
+        cudaFree(params.normals);
+    }
 };
 
 

@@ -130,8 +130,18 @@ extern "C" __global__ void __closesthit__ch()
     optixGetTriangleVertexData( gas, primIdx, sbtIdx, time, data );
     */
 
-    float3 normal = make_float3(0.5f);// + 0.5f * normalize(cross(data[1]-data[0], data[2]-data[0]));
+    unsigned int vertoffset = optixGetPrimitiveIndex() * 3;
 
+    /*
+    const float2 uv = optixGetTriangleBarycentrics();
+    float3 v0_interp = uv.x * params.normals[vertoffset] + (1.0f - uv.x) * params.normals[vertoffset+1];
+    float3 v1_interp = uv.y * params.normals[vertoffset] + (1.0f - uv.y) * params.normals[vertoffset+1];
+    */
+
+    float3 v0 = params.vertices[vertoffset + 1] - params.vertices[vertoffset];
+    float3 v1 = params.vertices[vertoffset + 2] - params.vertices[vertoffset];
+
+    float3 normal = normalize(cross(v0, v1));
 
     setPayload(normal);
 }

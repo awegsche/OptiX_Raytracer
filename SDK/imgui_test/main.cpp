@@ -279,6 +279,8 @@ int main(int argc, char *argv[])
 
         Params params;
         params.camera = cam.new_device_ptr();
+        params.vertices = triangles.get_device_vertices();
+        //params.normals = triangles.get_device_normals();
         params.tfactor = 0.5f;
         params.dt = 0;
 
@@ -492,7 +494,7 @@ int main(int argc, char *argv[])
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(sbt.raygenRecord)));
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(sbt.missRecordBase)));
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(sbt.hitgroupRecordBase)));
-            CUDA_CHECK(cudaFree(params.film));
+            Params::cleanup(params);
 
             OPTIX_CHECK(optixPipelineDestroy(pipeline));
             OPTIX_CHECK(optixProgramGroupDestroy(hitgroup_prog_group));
