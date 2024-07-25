@@ -16,13 +16,13 @@
 class Camera
 {
   public:
-    __host__ void set_eye(float3 new_eye) { eye = new_eye; }
+    __host__ void set_eye(float3 new_eye) { m_eye = new_eye; }
 
     /** @brief Sets focal distance
      *
      * Note: internal focal distance is relative to `length(lookat - eye)`
      * */
-    __host__ void set_fd(float new_fd) { fd = new_fd / length(lookat - eye); }
+    __host__ void set_fd(float new_fd) { m_fd = new_fd / length(m_lookat - m_eye); }
 
     /**
      * @brief Sets the field of view (angle of visible field)
@@ -30,7 +30,7 @@ class Camera
      * @param new_fov
      * @return
      */
-    __host__ void set_fov(float new_fov) { fov = new_fov; }
+    __host__ void set_fov(float new_fov) { m_fov = new_fov; }
 
     /**
      * @brief Sets the aperture
@@ -38,7 +38,7 @@ class Camera
      * @param new_aperture
      * @return
      */
-    __host__ void set_aperture(float new_aperture) { aperture = new_aperture; }
+    __host__ void set_aperture(float new_aperture) { m_aperture = new_aperture; }
 
     /**
      * @brief Sets / Unsets orthographic projection
@@ -46,7 +46,7 @@ class Camera
      * @param new_ortho
      * @return
      */
-    __host__ void set_ortho(bool new_ortho) { ortho = new_ortho; }
+    __host__ void set_ortho(bool new_ortho) { m_ortho = new_ortho; }
 
     /**
      * @brief Allocates Camera on device memory and returns the pointer to it
@@ -81,14 +81,14 @@ class Camera
      */
     __host__ void compute_uvw()
     {
-        w = lookat - eye;
-        w *= fd;
+        w = m_lookat - m_eye;
+        w *= m_fd;
         const float wlen = length(w);
 
-        u = normalize(cross(w, up));
+        u = normalize(cross(w, m_up));
         v = normalize(cross(u, w));
 
-        const float vlen = wlen * tanf(0.5f * fov * M_PIf / 180.0f);
+        const float vlen = wlen * tanf(0.5f * m_fov * M_PIf / 180.0f);
         v *= vlen;
         const float ulen = vlen;
         u *= ulen;
@@ -111,31 +111,33 @@ class Camera
                            static_cast<float>(idx.y) / static_cast<float>(dim.y))
                    - 1.0f;
 
-
-        if (ortho) {
+        if (m_ortho) {
             direction = normalize(d.x * u + d.y * v + w);
-            origin = eye + d.x * u + d.y * v;
+            origin = m_eye + d.x * u + d.y * v;
         } else {
-            const float2 dx = make_float2((rnd(seed) - 0.5f) * aperture, (rnd(seed) - 0.5f) * aperture);
+            const float2 dx = make_float2((rnd(seed) - 0.5f) * m_aperture, (rnd(seed) - 0.5f) * m_aperture);
             d = d - dx;
             direction = normalize(d.x * u + d.y * v + w);
-            origin = eye + dx.x * u + dx.y * v;
+            origin = m_eye + dx.x * u + dx.y * v;
         }
     }
 
-
   private:
-    float3 eye = { 0.0, 1.0, -2.0 };
+    // position and orientation
+    float3 m_eye = { 0.0, 1.0, -2.0 };
+    float3 m_lookat = { 0.0, 0.0, 0.0 };
+    float3 m_up = { 0.0, 1.0, 0.000073 };// avoid straight up for singularities
+                                         //
+    // camera settings
+    bool m_ortho = false;
+    float m_fov = 45.0f;
+    float m_fd = 1.0f;
+    float m_aperture = 0.0f;
+
+    // orthogonal basis
     float3 u = {};
     float3 v = {};
     float3 w = {};
-    bool ortho = false;
-    float fov = 45.0f;
-    float fd = 1.0f;
-    float aperture = 0.0f;
-
-    float3 up = { 0.0, 1.0, 0.000073 };// avoid straight up for singularities
-    float3 lookat = { 0.0, 0.0, 0.0 };
 };
 
 #endif
