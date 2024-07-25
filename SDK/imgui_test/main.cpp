@@ -33,8 +33,8 @@
 #include <imgui/imgui_impl_opengl3.h>
 #include <spdlog/spdlog.h>
 
-#include "make_geometry.h"
 #include "device.h"
+#include "make_geometry.h"
 #include "triangle_gas.h"
 
 using sutil::GLDisplay;
@@ -91,6 +91,8 @@ int main(int argc, char *argv[])
 
     float fov = 45.0f;
     float fod = 1.0f;
+    float aperture = 0.1f;
+    bool orhto = false;
     int width = window_width - side_panel_width;
     int height = window_height;
 
@@ -134,6 +136,7 @@ int main(int argc, char *argv[])
                 &LOG_SIZE,
                 &module));
         }
+
 
         //
         // Create program groups
@@ -267,23 +270,23 @@ int main(int argc, char *argv[])
         CUstream stream;
         CUDA_CHECK(cudaStreamCreate(&stream));
 
-        sutil::Camera cam;
-        configureCamera(cam, buf_width, buf_height);
+        Camera cam{};
+        cam.set_eye({ 0.0, 1.0, -10.0 });
+        cam.set_aperture(0.0);
+        cam.set_fd(1.0);
+        cam.set_fov(45.0);
+        cam.compute_uvw();
 
-        spdlog::info("Params");
         Params params;
-        params.dirty = true;
+        params.camera = cam.new_device_ptr();
         params.tfactor = 0.5f;
-        params.aperture = 0.01f;
         params.dt = 0;
 
         CUDA_CHECK(cudaMalloc(&params.film, sizeof(float3) * buf_width * buf_height));
 
-        spdlog::info("setup zero film");
         {
             std::vector<float> zero_film;
             zero_film.resize(buf_width * buf_height * 3, 0.0f);
-            spdlog::info("zero film size: {}", zero_film.size());
 
             // std::fill(zero_film.begin(), zero_film.end(), 0.0f);
 
@@ -291,18 +294,15 @@ int main(int argc, char *argv[])
                 zero_film.data(),
                 sizeof(float) * zero_film.size(),
                 cudaMemcpyHostToDevice));
-            spdlog::info("setup zero film");
         }
         params.image = output_buffer.map();
         params.image_width = buf_width;
         params.image_height = buf_height;
         params.handle = triangles.get_gas_handle();
-        params.cam_eye = cam.eye();
-        cam.UVWFrame(params.cam_u, params.cam_v, params.cam_w);
 
         CUdeviceptr d_param;
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_param), sizeof(Params)));
-        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(d_param), &params, sizeof(params), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(d_param), &params, sizeof(Params), cudaMemcpyHostToDevice));
 
         OPTIX_CHECK(optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
         CUDA_SYNC_CHECK();
@@ -369,6 +369,8 @@ int main(int argc, char *argv[])
 
                 int framebuf_res_x = 0, framebuf_res_y = 0;
                 int step = 0;
+
+                spdlog::info("start loop");
                 do {
                     glfwPollEvents();
                     // glfwWaitEvents();
@@ -377,17 +379,23 @@ int main(int argc, char *argv[])
 
                     const float phase = 0;// static_cast<float>(step) * 1.0e-2;
 
-                    cam.setEye({ 2.0f * sin(phase), 1.0f, 2.0f * cos(phase) });
+                    cam.set_eye({ 2.0f * sin(phase), 1.0f, 2.0f * cos(phase) });
 
                     // render
-                    ++params.dt;
+                    cam.set_fov(fov);
+                    cam.set_fd(fod);
+                    cam.set_ortho(orhto);
+                    cam.set_aperture(aperture);
+                    cam.compute_uvw();
+                    cam.update_device_ptr(params.camera);
+
+                    if (params.dirty) params.dt = 0;
                     params.image = output_buffer.map();
                     params.image_width = buf_width;
                     params.image_height = buf_height;
                     params.handle = triangles.get_gas_handle();
-                    params.cam_eye = cam.eye();
-                    cam.UVWFrame(params.cam_u, params.cam_v, params.cam_w);
 
+                    ++params.dt;
 
                     CUdeviceptr d_param;
                     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_param), sizeof(Params)));
@@ -438,15 +446,15 @@ int main(int argc, char *argv[])
                             ImGui::Text("Step: %d", step);
 
                             ImGui::Text("Camera:");
-                            ImGui::Text("(%.2f, %.2f, %.2f", params.cam_eye.x, params.cam_eye.y, params.cam_eye.z);
+                            // ImGui::Text("(%.2f, %.2f, %.2f", params.cam_eye.x, params.cam_eye.y, params.cam_eye.z);
                         }
                     }
 
                     if (ImGui::CollapsingHeader("Settings")) {
-                        params.dirty |= ImGui::Checkbox("Orthographic", &params.ortho);
+                        params.dirty |= ImGui::Checkbox("Orthographic", &orhto);
                         params.dirty |= ImGui::SliderFloat("T Factor", &params.tfactor, 0.0, 1.0);
                         params.dirty |= ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
-                        params.dirty |= ImGui::SliderFloat("Aperture", &params.aperture, 0.001f, 0.1f);
+                        params.dirty |= ImGui::SliderFloat("Aperture", &aperture, 0.001f, 0.1f);
                         params.dirty |= ImGui::SliderFloat("Focal length", &fod, 0.2f, 10.0f);
                     }
 
@@ -457,9 +465,6 @@ int main(int argc, char *argv[])
 
                     ImGui::Render();
 
-                    cam.setFovY(fov);
-                    cam.setFocalLength(fod);
-                    if (params.dirty) params.dt = 0;
                     // cam.
 
                     glfwGetFramebufferSize(window, &framebuf_res_x, &framebuf_res_y);

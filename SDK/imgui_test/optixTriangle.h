@@ -25,21 +25,22 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+//
+#include "camera.h"
+#include "optix_types.h"
+#include "vector_types.h"
 
 struct Params
 {
-    uchar4 *image;
-    float3 *film;
-    unsigned int image_width;
-    unsigned int image_height;
-    float3 cam_eye;
-    float3 cam_u, cam_v, cam_w;
-    unsigned int dt;
-    float aperture;
-    bool ortho;
-    bool dirty;
-    float tfactor;
-    OptixTraversableHandle handle;
+    Camera *camera = nullptr;
+    bool dirty = true; // redraw?
+    uchar4 *image = nullptr;
+    float3 *film = nullptr;
+    unsigned int image_width = 400;
+    unsigned int image_height = 300;
+    unsigned int dt = 0;
+    float tfactor = 1.0;
+    OptixTraversableHandle handle = 0;
 };
 
 

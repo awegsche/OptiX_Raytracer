@@ -32,6 +32,7 @@
 #include "internal/optix_micromap_impl.h"
 #include "optixTriangle.h"
 #include "optix_device.h"
+#include "camera.h"
 #include <cuda/helpers.h>
 #include <cuda/random.h>
 
@@ -49,11 +50,11 @@ static __forceinline__ __device__ void setPayload(float3 p)
     optixSetPayload_2(__float_as_uint(p.z));
 }
 
-static __forceinline__ __device__ void computeRay(uint3 idx, uint3 dim, float3 &origin, float3 &direction)
+static __forceinline__ __device__ void computeRay(Camera* cam, uint3 idx, uint3 dim, float3 &origin, float3 &direction)
 {
-    const float3 U = params.cam_u;
-    const float3 V = params.cam_v;
-    const float3 W = params.cam_w;
+    const float3 U = cam->u;
+    const float3 V = cam->v;
+    const float3 W = cam->w;
     float2 d = 2.0f
                    * make_float2(static_cast<float>(idx.x) / static_cast<float>(dim.x),
                        static_cast<float>(idx.y) / static_cast<float>(dim.y))
@@ -61,11 +62,11 @@ static __forceinline__ __device__ void computeRay(uint3 idx, uint3 dim, float3 &
 
     unsigned int seed = tea<4>(idx.x + dim.x * idx.y, params.dt);
 
-    const float2 dx = make_float2((rnd(seed) - 0.5f) * params.aperture, (rnd(seed) - 0.5f) * params.aperture);
+    const float2 dx = make_float2((rnd(seed) - 0.5f) * cam->aperture, (rnd(seed) - 0.5f) * cam->aperture);
 
     d = d - dx;
     direction = normalize(d.x * U + d.y * V + W);
-    origin = params.ortho ? params.cam_eye + d.x * U + d.y * V : params.cam_eye;
+    origin = cam->ortho ? cam->eye + d.x * U + d.y * V : cam->eye;
     origin = origin + dx.x * U + dx.y * V;
 }
 
@@ -76,10 +77,12 @@ extern "C" __global__ void __raygen__rg()
     const uint3 idx = optixGetLaunchIndex();
     const uint3 dim = optixGetLaunchDimensions();
 
+
     // Map our launch idx to a screen location and create a ray from the camera
     // location through the screen
     float3 ray_origin, ray_direction;
-    computeRay(idx, dim, ray_origin, ray_direction);
+    //computeRay(params.camera, idx, dim, ray_origin, ray_direction);
+    params.camera->compute_ray(idx, dim, ray_origin, ray_direction, params.dt);
 
     // Trace the ray against our scene hierarchy
     unsigned int p0, p1, p2;
@@ -137,10 +140,19 @@ extern "C" __global__ void __closesthit__ch()
     // attributes are provided by the OptiX API, indlucing barycentric coordinates.
 
     // TODO: lookup diffuse shading in PBRT / RTFTGU and implement it here.
+    /*
+    OptixTraversableHandle gas = optixGetGASTraversableHandle();
+    unsigned int primIdx = optixGetPrimitiveIndex();
+    unsigned int sbtIdx = optixGetSbtGASIndex();
+    float time = optixGetRayTime();
 
-    const float2 barycentrics = optixGetTriangleBarycentrics();
-    float time = 1.0f - optixGetRayTmax() * params.tfactor;
-    time = time < 0.0f ? 0.0f : time;
 
-    setPayload(make_float3(time, time, time));
+    float3 data[3];
+    optixGetTriangleVertexData( gas, primIdx, sbtIdx, time, data );
+    */
+
+    float3 normal = make_float3(0.5f);// + 0.5f * normalize(cross(data[1]-data[0], data[2]-data[0]));
+
+
+    setPayload(normal);
 }
