@@ -27,7 +27,10 @@
 //
 //
 #include "camera.h"
+#include "cuda.h"
+#include "cuda_runtime.h"
 #include "cuda_runtime_api.h"
+#include "driver_types.h"
 #include "optix_types.h"
 #include "vector_types.h"
 
@@ -36,6 +39,7 @@ struct Params
     // settings
     unsigned int image_width = 400;
     unsigned int image_height = 300;
+    unsigned int samples_per_frame = 4;
 
     Camera *camera = nullptr;
 
@@ -54,11 +58,21 @@ struct Params
     float3* normals = nullptr;
     float3* vertices = nullptr;
 
-    static void cleanup(Params& params) {
+    __host__ static void cleanup(Params& params) {
         cudaFree(params.film);
         cudaFree(params.camera);
         cudaFree(params.normals);
     }
+
+    __host__ CUdeviceptr to_device() const {
+        CUdeviceptr ptr;
+        cudaMalloc(reinterpret_cast<void**>(&ptr), sizeof(Params));
+        cudaMemcpy(reinterpret_cast<void*>(ptr), this, sizeof(Params), cudaMemcpyHostToDevice);
+
+        return ptr;
+    }
+
+    __host__ void frame_step() { dt += samples_per_frame; }
 };
 
 

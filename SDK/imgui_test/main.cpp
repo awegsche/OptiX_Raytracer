@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <cmath>
 #include <fmt/core.h>
 #include <optix.h>
 #include <optix_stack_size.h>
@@ -39,7 +40,7 @@
 
 using sutil::GLDisplay;
 
-constexpr int DOWNSAMPLING = 2;
+constexpr int DOWNSAMPLING = 1;
 constexpr int32_t side_panel_width = 256;
 constexpr int window_width = 1024;
 constexpr int window_height = 768;
@@ -54,14 +55,7 @@ using RayGenSbtRecord = SbtRecord<RayGenData>;
 using MissSbtRecord = SbtRecord<MissData>;
 using HitGroupSbtRecord = SbtRecord<HitGroupData>;
 
-void configureCamera(sutil::Camera &cam, const uint32_t width, const uint32_t height)
-{
-    cam.setEye({ 0.0f, 0.0f, 2.0f });
-    cam.setLookat({ 0.0f, 0.0f, 0.0f });
-    cam.setUp({ 0.0f, 1.0f, 0.00007f });
-    cam.setFovY(45.0f);
-    cam.setAspectRatio((float)width / (float)height);
-}
+bool stop_to_render = false;
 
 void initGL()
 {
@@ -82,6 +76,11 @@ static void keyCallback(GLFWwindow *window, int32_t key, int32_t /*scancode*/, i
 {
     if (action == GLFW_PRESS) {
         if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE) { glfwSetWindowShouldClose(window, true); }
+        if (key == GLFW_KEY_SPACE) { stop_to_render = true; }
+    }
+
+    if (action == GLFW_RELEASE) {
+        if (key == GLFW_KEY_SPACE) { stop_to_render = false; }
     }
 }
 
@@ -91,7 +90,8 @@ int main(int argc, char *argv[])
 
     float fov = 45.0f;
     float fod = 1.0f;
-    float aperture = 0.1f;
+    int spf = 8;
+    float aperture = 0.5f;
     bool orhto = false;
     int width = window_width - side_panel_width;
     int height = window_height;
@@ -280,37 +280,21 @@ int main(int argc, char *argv[])
         Params params;
         params.camera = cam.new_device_ptr();
         params.vertices = triangles.get_device_vertices();
-        //params.normals = triangles.get_device_normals();
+        // params.normals = triangles.get_device_normals();
         params.tfactor = 0.5f;
         params.dt = 0;
 
         CUDA_CHECK(cudaMalloc(&params.film, sizeof(float3) * buf_width * buf_height));
 
-        {
-            std::vector<float> zero_film;
-            zero_film.resize(buf_width * buf_height * 3, 0.0f);
-
-            // std::fill(zero_film.begin(), zero_film.end(), 0.0f);
-
-            CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(params.film),
-                zero_film.data(),
-                sizeof(float) * zero_film.size(),
-                cudaMemcpyHostToDevice));
-        }
+#ifdef NDEBUG
+        spf = 5;
+#else
+        spf = 3;
+#endif
         params.image = output_buffer.map();
         params.image_width = buf_width;
         params.image_height = buf_height;
         params.handle = triangles.get_gas_handle();
-
-        CUdeviceptr d_param;
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_param), sizeof(Params)));
-        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(d_param), &params, sizeof(Params), cudaMemcpyHostToDevice));
-
-        OPTIX_CHECK(optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
-        CUDA_SYNC_CHECK();
-
-        output_buffer.unmap();
-        CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
 
         //
         // Display results
@@ -323,7 +307,6 @@ int main(int argc, char *argv[])
             buffer.width = buf_width;
             buffer.height = buf_height;
             buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
-
 
             if (outfile.empty()) {
 
@@ -378,10 +361,15 @@ int main(int argc, char *argv[])
                     // glfwWaitEvents();
 
                     ++step;
+                    if (params.dirty) params.dt = 0;
 
-                    const float phase = 0;// static_cast<float>(step) * 1.0e-2;
+                    params.dirty = false;
 
-                    cam.set_eye({ 2.0f * sin(phase), 1.0f, 2.0f * cos(phase) });
+                    if (!stop_to_render) {
+                        const float phase = static_cast<float>(step) * 1.0e-2;
+                        cam.set_eye({ 2.0f * sin(phase), 1.0f, 2.0f * cos(phase) });
+                        params.dirty = true;
+                    }
 
                     // render
                     cam.set_fov(fov);
@@ -391,18 +379,14 @@ int main(int argc, char *argv[])
                     cam.compute_uvw();
                     cam.update_device_ptr(params.camera);
 
-                    if (params.dirty) params.dt = 0;
                     params.image = output_buffer.map();
                     params.image_width = buf_width;
                     params.image_height = buf_height;
                     params.handle = triangles.get_gas_handle();
 
-                    ++params.dt;
+                    params.frame_step();
 
-                    CUdeviceptr d_param;
-                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_param), sizeof(Params)));
-                    CUDA_CHECK(
-                        cudaMemcpy(reinterpret_cast<void *>(d_param), &params, sizeof(params), cudaMemcpyHostToDevice));
+                    const CUdeviceptr d_param = params.to_device();
 
                     OPTIX_CHECK(optixLaunch(
                         pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
@@ -428,7 +412,6 @@ int main(int argc, char *argv[])
                     ImGui::SetNextWindowSize(
                         { static_cast<float>(side_panel_width), static_cast<float>(height) }, ImGuiCond_Always);
 
-                    params.dirty = false;
 #ifdef NDEBUG
                     ImGui::Begin("Release",
                         0,
@@ -456,8 +439,11 @@ int main(int argc, char *argv[])
                         params.dirty |= ImGui::Checkbox("Orthographic", &orhto);
                         params.dirty |= ImGui::SliderFloat("T Factor", &params.tfactor, 0.0, 1.0);
                         params.dirty |= ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
-                        params.dirty |= ImGui::SliderFloat("Aperture", &aperture, 0.001f, 0.1f);
+                        params.dirty |= ImGui::SliderFloat("Aperture", &aperture, 0.0f, 1.0f);
                         params.dirty |= ImGui::SliderFloat("Focal length", &fod, 0.2f, 10.0f);
+                        params.dirty |= ImGui::SliderInt("SPF", &spf, 0, 10);
+                        params.samples_per_frame = static_cast<unsigned int>(pow(2, spf));
+                        ImGui::Text("Samples per Frame: %d", params.samples_per_frame);
                     }
 
 

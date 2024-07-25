@@ -104,14 +104,13 @@ class Camera
      * @param dt
      */
     __host__ __device__ __forceinline__ void
-        compute_ray(uint3 idx, uint3 dim, float3 &origin, float3 &direction, unsigned int dt) const
+        compute_ray(uint3 idx, uint3 dim, float3 &origin, float3 &direction, unsigned int& seed) const
     {
         float2 d = 2.0f
                        * make_float2(static_cast<float>(idx.x) / static_cast<float>(dim.x),
                            static_cast<float>(idx.y) / static_cast<float>(dim.y))
                    - 1.0f;
 
-        unsigned int seed = tea<4>(idx.x + dim.x * idx.y, dt);
 
         const float2 dx = make_float2((rnd(seed) - 0.5f) * aperture, (rnd(seed) - 0.5f) * aperture);
 

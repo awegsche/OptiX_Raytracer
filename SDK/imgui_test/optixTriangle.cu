@@ -61,31 +61,35 @@ extern "C" __global__ void __raygen__rg()
     // location through the screen
     float3 ray_origin, ray_direction;
     // computeRay(params.camera, idx, dim, ray_origin, ray_direction);
-    params.camera->compute_ray(idx, dim, ray_origin, ray_direction, params.dt);
 
     // Trace the ray against our scene hierarchy
     unsigned int p0, p1, p2;
-    optixTrace(params.handle,
-        ray_origin,
-        ray_direction,
-        0.0f,// Min intersection distance
-        1e16f,// Max intersection distance
-        0.0f,// rayTime -- used for motion blur
-        OptixVisibilityMask(255),// Specify always visible
-        OPTIX_RAY_FLAG_NONE,
-        0,// SBT offset   -- See SBT discussion
-        1,// SBT stride   -- See SBT discussion
-        0,// missSBTIndex -- See SBT discussion
-        p0,
-        p1,
-        p2);
-    float3 result;
-    result.x = __uint_as_float(p0);
-    result.y = __uint_as_float(p1);
-    result.z = __uint_as_float(p2);
-
-    // Record results in our output raster
     const unsigned int index = idx.y * params.image_width + idx.x;
+    float3 result = { 0.0, 0.0, 0.0 };
+
+    unsigned int seed = tea<4>(idx.x + dim.x * idx.y, params.dt);
+
+    for (unsigned int i = 0; i < params.samples_per_frame; ++i) {
+        params.camera->compute_ray(idx, dim, ray_origin, ray_direction, seed);
+        optixTrace(params.handle,
+            ray_origin,
+            ray_direction,
+            0.0f,// Min intersection distance
+            1e16f,// Max intersection distance
+            0.0f,// rayTime -- used for motion blur
+            OptixVisibilityMask(255),// Specify always visible
+            OPTIX_RAY_FLAG_NONE,
+            0,// SBT offset   -- See SBT discussion
+            1,// SBT stride   -- See SBT discussion
+            0,// missSBTIndex -- See SBT discussion
+            p0,
+            p1,
+            p2);
+        result.x += __uint_as_float(p0);
+        result.y += __uint_as_float(p1);
+        result.z += __uint_as_float(p2);
+    }
+    // Record results in our output raster
     if (params.dirty) {
         params.film[index] = result;
     } else {
@@ -139,6 +143,7 @@ extern "C" __global__ void __closesthit__ch()
     */
 
     float3 v0 = params.vertices[vertoffset + 1] - params.vertices[vertoffset];
+
     float3 v1 = params.vertices[vertoffset + 2] - params.vertices[vertoffset];
 
     float3 normal = normalize(cross(v0, v1));
