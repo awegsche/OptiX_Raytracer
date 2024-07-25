@@ -12,13 +12,9 @@
 #include <sutil/Exception.h>
 #endif
 
-struct Camera
+class Camera
 {
   public:
-    // Camera() = default;
-    //
-    //
-
     __host__ void set_eye(float3 new_eye) { eye = new_eye; }
 
     /** @brief Sets focal distance
@@ -70,9 +66,6 @@ struct Camera
     __host__ __device__ __forceinline__ void
         compute_ray(uint3 idx, uint3 dim, float3 &origin, float3 &direction, unsigned int dt) const
     {
-        const float3 U = u;
-        const float3 V = v;
-        const float3 W = w;
         float2 d = 2.0f
                        * make_float2(static_cast<float>(idx.x) / static_cast<float>(dim.x),
                            static_cast<float>(idx.y) / static_cast<float>(dim.y))
@@ -83,13 +76,13 @@ struct Camera
         const float2 dx = make_float2((rnd(seed) - 0.5f) * aperture, (rnd(seed) - 0.5f) * aperture);
 
         d = d - dx;
-        direction = normalize(d.x * U + d.y * V + W);
-        origin = ortho ? eye + d.x * U + d.y * V : eye;
-        origin = origin + dx.x * U + dx.y * V;
+        direction = normalize(d.x * u + d.y * v + w);
+        origin = ortho ? eye + d.x * u + d.y * v : eye;
+        origin = origin + dx.x * u + dx.y * v;
     }
 
 
-    // private:
+  private:
     float3 eye = { 0.0, 1.0, -2.0 };
     float3 u = {};
     float3 v = {};

@@ -29,10 +29,10 @@
 // #include <__clang_cuda_runtime_wrapper.h>
 #include <optix.h>
 
+#include "camera.h"
 #include "internal/optix_micromap_impl.h"
 #include "optixTriangle.h"
 #include "optix_device.h"
-#include "camera.h"
 #include <cuda/helpers.h>
 #include <cuda/random.h>
 
@@ -50,27 +50,6 @@ static __forceinline__ __device__ void setPayload(float3 p)
     optixSetPayload_2(__float_as_uint(p.z));
 }
 
-static __forceinline__ __device__ void computeRay(Camera* cam, uint3 idx, uint3 dim, float3 &origin, float3 &direction)
-{
-    const float3 U = cam->u;
-    const float3 V = cam->v;
-    const float3 W = cam->w;
-    float2 d = 2.0f
-                   * make_float2(static_cast<float>(idx.x) / static_cast<float>(dim.x),
-                       static_cast<float>(idx.y) / static_cast<float>(dim.y))
-               - 1.0f;
-
-    unsigned int seed = tea<4>(idx.x + dim.x * idx.y, params.dt);
-
-    const float2 dx = make_float2((rnd(seed) - 0.5f) * cam->aperture, (rnd(seed) - 0.5f) * cam->aperture);
-
-    d = d - dx;
-    direction = normalize(d.x * U + d.y * V + W);
-    origin = cam->ortho ? cam->eye + d.x * U + d.y * V : cam->eye;
-    origin = origin + dx.x * U + dx.y * V;
-}
-
-
 extern "C" __global__ void __raygen__rg()
 {
     // Lookup our location within the launch grid
@@ -81,7 +60,7 @@ extern "C" __global__ void __raygen__rg()
     // Map our launch idx to a screen location and create a ray from the camera
     // location through the screen
     float3 ray_origin, ray_direction;
-    //computeRay(params.camera, idx, dim, ray_origin, ray_direction);
+    // computeRay(params.camera, idx, dim, ray_origin, ray_direction);
     params.camera->compute_ray(idx, dim, ray_origin, ray_direction, params.dt);
 
     // Trace the ray against our scene hierarchy
