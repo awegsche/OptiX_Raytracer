@@ -104,7 +104,7 @@ class Camera
      * @param dt
      */
     __host__ __device__ __forceinline__ void
-        compute_ray(uint3 idx, uint3 dim, float3 &origin, float3 &direction, unsigned int& seed) const
+        compute_ray(uint3 idx, uint3 dim, float3 &origin, float3 &direction, unsigned int &seed) const
     {
         float2 d = 2.0f
                        * make_float2(static_cast<float>(idx.x) / static_cast<float>(dim.x),
@@ -112,12 +112,15 @@ class Camera
                    - 1.0f;
 
 
-        const float2 dx = make_float2((rnd(seed) - 0.5f) * aperture, (rnd(seed) - 0.5f) * aperture);
-
-        d = d - dx;
-        direction = normalize(d.x * u + d.y * v + w);
-        origin = ortho ? eye + d.x * u + d.y * v : eye;
-        origin = origin + dx.x * u + dx.y * v;
+        if (ortho) {
+            direction = normalize(d.x * u + d.y * v + w);
+            origin = eye + d.x * u + d.y * v;
+        } else {
+            const float2 dx = make_float2((rnd(seed) - 0.5f) * aperture, (rnd(seed) - 0.5f) * aperture);
+            d = d - dx;
+            direction = normalize(d.x * u + d.y * v + w);
+            origin = eye + dx.x * u + dx.y * v;
+        }
     }
 
 

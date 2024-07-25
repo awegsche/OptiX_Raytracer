@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
     std::string outfile;
 
     float fov = 45.0f;
-    float fod = 1.0f;
+    float fod = 2.0f;
     int spf = 8;
     float aperture = 0.5f;
     bool orhto = false;
@@ -367,7 +367,7 @@ int main(int argc, char *argv[])
 
                     if (!stop_to_render) {
                         const float phase = static_cast<float>(step) * 1.0e-2;
-                        cam.set_eye({ 2.0f * sin(phase), 1.0f, 2.0f * cos(phase) });
+                        cam.set_eye({ 2.0f * sin(phase), 0.5f, 2.0f * cos(phase) });
                         params.dirty = true;
                     }
 
