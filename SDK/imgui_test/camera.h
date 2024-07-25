@@ -8,10 +8,11 @@
 #include <sutil/vec_math.h>
 #include <vector_types.h>
 
-#ifndef __CUDACC__
-#include <sutil/Exception.h>
-#endif
-
+/**
+ * @class Camera
+ * @brief Camera class. Calculates primary rays to shoot into the scene.
+ *
+ */
 class Camera
 {
   public:
@@ -23,33 +24,63 @@ class Camera
      * */
     __host__ void set_fd(float new_fd) { fd = new_fd / length(lookat - eye); }
 
+    /**
+     * @brief Sets the field of view (angle of visible field)
+     *
+     * @param new_fov
+     * @return
+     */
     __host__ void set_fov(float new_fov) { fov = new_fov; }
 
+    /**
+     * @brief Sets the aperture
+     *
+     * @param new_aperture
+     * @return
+     */
     __host__ void set_aperture(float new_aperture) { aperture = new_aperture; }
 
+    /**
+     * @brief Sets / Unsets orthographic projection
+     *
+     * @param new_ortho
+     * @return
+     */
     __host__ void set_ortho(bool new_ortho) { ortho = new_ortho; }
 
-#ifndef __CUDACC__
-    /** @brief Creates a new Camera on the device and returns its dev_ptr.
-     * */
+    /**
+     * @brief Allocates Camera on device memory and returns the pointer to it
+     *
+     * @return
+     */
     __host__ Camera *new_device_ptr() const
     {
         Camera *ptr = nullptr;
-        CUDA_CHECK(cudaMalloc(&ptr, sizeof(Camera)));
-        CUDA_CHECK(cudaMemcpy(ptr, this, sizeof(Camera), cudaMemcpyHostToDevice));
+        cudaMalloc(&ptr, sizeof(Camera));
+        cudaMemcpy(ptr, this, sizeof(Camera), cudaMemcpyHostToDevice);
 
         return ptr;
     }
-#endif
 
+    /**
+     * @brief Updates the device side camera object.
+     * Must be called whenever the camera changes behaviour / position.
+     *
+     * @param ptr The device ptr
+     * @return
+     */
     __host__ void update_device_ptr(Camera *ptr) const
     {
         cudaMemcpy(ptr, this, sizeof(Camera), cudaMemcpyHostToDevice);
     }
 
+    /**
+     * @brief Computes ortho basis (not orthonormal, w carries info about focal distance)
+     *
+     * @return
+     */
     __host__ void compute_uvw()
     {
-
         w = lookat - eye;
         w *= fd;
         const float wlen = length(w);
@@ -63,6 +94,15 @@ class Camera
         u *= ulen;
     }
 
+    /**
+     * @brief Calculates a primary ray for the given pixel.
+     *
+     * @param idx
+     * @param dim
+     * @param origin
+     * @param direction
+     * @param dt
+     */
     __host__ __device__ __forceinline__ void
         compute_ray(uint3 idx, uint3 dim, float3 &origin, float3 &direction, unsigned int dt) const
     {
