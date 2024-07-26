@@ -60,6 +60,7 @@ using MissSbtRecord = SbtRecord<MissData>;
 using HitGroupSbtRecord = SbtRecord<HitGroupData>;
 
 bool stop_to_render = false;
+bool render_to_file = false;
 
 void initGL()
 {
@@ -84,7 +85,10 @@ static void keyCallback(GLFWwindow *window, int32_t key, int32_t /*scancode*/, i
     }
 
     if (action == GLFW_RELEASE) {
-        if (key == GLFW_KEY_SPACE) { stop_to_render = false; }
+        if (key == GLFW_KEY_SPACE) {
+            stop_to_render = false;
+            render_to_file = true;
+        }
     }
 }
 
@@ -359,6 +363,12 @@ int main(int argc, char *argv[])
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
             // glfwWaitEvents();
+
+            if (render_to_file) {
+                render_to_file = false;
+
+                sutil::saveImage("last_render.png", buffer, false);
+            }
 
             ++step;
             if (params.dirty) params.dt = 0;
