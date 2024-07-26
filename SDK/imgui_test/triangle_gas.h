@@ -11,6 +11,8 @@
 #include "optix_types.h"
 #include "vector_types.h"
 
+#include <imgui/imgui.h>
+
 class TriangleGAS
 {
   public:
@@ -41,8 +43,16 @@ class TriangleGAS
         return ptr;
     }
 
+    void imgui() const {
+        if (ImGui::CollapsingHeader("Triangle GAS")) {
+            ImGui::Text("vertices: %d K", m_vertices.size() / 1000);
+            ImGui::Text("GAS buffer size: %d MB", m_gas_buffer_sizes.outputSizeInBytes / 1024 / 1024);
+        }
+    }
+
   private:
     OptixTraversableHandle m_gas_handle;
+    OptixAccelBufferSizes m_gas_buffer_sizes;
     CUdeviceptr m_d_gas_output_buffer;
     std::vector<float3> m_vertices;
     std::vector<float3> m_normals;
