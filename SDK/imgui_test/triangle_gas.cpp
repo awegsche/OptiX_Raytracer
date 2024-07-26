@@ -57,6 +57,19 @@ std::tuple<std::vector<float3>, std::vector<float3>> load_assimp(const std::stri
         }
     }
 
+    vertices.reserve(vertices.size() * 4);
+    // duplicate mesh triangles (TODO: replace this with instancing)
+    size_t nvertices = vertices.size();
+    for (int x = -2; x < 3; ++x)
+        for (int y = -2; y < 3; ++y) {
+            if (x == 0 && y == 0) continue;
+            for (size_t v = 0; v < nvertices; ++v) {
+                float3 new_vert = vertices[v];
+                new_vert.x += 0.25f * x;
+                new_vert.z += 0.25f * y;
+                vertices.push_back(new_vert);
+            }
+        }
 
     // add tesselated floor
 

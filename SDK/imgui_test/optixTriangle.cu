@@ -181,7 +181,8 @@ extern "C" __global__ void __closesthit__ch()
     unsigned int seed = tea<4>(idx.x + dim.x * idx.y, params.dt);
 
     // jittered light dir
-    const float3 light_dir = { 0.71f + rnd(seed) * 0.01f, 0.71f + rnd(seed) * 0.01f, 0.0f + rnd(seed) * 0.01f };
+    float3 light_dir = { 0.71f + rnd(seed) * 0.01f, 0.51f + rnd(seed) * 0.01f, 0.0f + rnd(seed) * 0.01f };
+    light_dir = normalize(light_dir);
 
     optixTraverse(params.handle,
         P,
