@@ -42,6 +42,47 @@ extern "C" {
 __constant__ Params params;
 }
 
+static __forceinline__ __device__ void cosine_sample_hemisphere(const float u1, const float u2, float3 &p)
+{
+    // Uniformly sample disk.
+    const float r = sqrtf(u1);
+    const float phi = 2.0f * M_PIf * u2;
+    p.x = r * cosf(phi);
+    p.y = r * sinf(phi);
+
+    // Project up to hemisphere.
+    p.z = sqrtf(fmaxf(0.0f, 1.0f - p.x * p.x - p.y * p.y));
+}
+
+struct Onb
+{
+    __forceinline__ __device__ Onb(const float3 &normal)
+    {
+        m_normal = normal;
+
+        if (fabs(m_normal.x) > fabs(m_normal.z)) {
+            m_binormal.x = -m_normal.y;
+            m_binormal.y = m_normal.x;
+            m_binormal.z = 0;
+        } else {
+            m_binormal.x = 0;
+            m_binormal.y = -m_normal.z;
+            m_binormal.z = m_normal.y;
+        }
+
+        m_binormal = normalize(m_binormal);
+        m_tangent = cross(m_binormal, m_normal);
+    }
+
+    __forceinline__ __device__ void inverse_transform(float3 &p) const
+    {
+        p = p.x * m_tangent + p.y * m_binormal + p.z * m_normal;
+    }
+
+    float3 m_tangent;
+    float3 m_binormal;
+    float3 m_normal;
+};
 
 static __forceinline__ __device__ void setPayload(float3 p)
 {
@@ -89,6 +130,7 @@ extern "C" __global__ void __raygen__rg()
         result.y += __uint_as_float(p1);
         result.z += __uint_as_float(p2);
     }
+
     // Record results in our output raster
     if (params.dirty) {
         params.film[index] = result;
@@ -123,30 +165,65 @@ extern "C" __global__ void __closesthit__ch()
     // attributes are provided by the OptiX API, indlucing barycentric coordinates.
 
     // TODO: lookup diffuse shading in PBRT / RTFTGU and implement it here.
-    /*
-    OptixTraversableHandle gas = optixGetGASTraversableHandle();
-    unsigned int primIdx = optixGetPrimitiveIndex();
-    unsigned int sbtIdx = optixGetSbtGASIndex();
-    float time = optixGetRayTime();
 
-
-    float3 data[3];
-    optixGetTriangleVertexData( gas, primIdx, sbtIdx, time, data );
-    */
-
+    // calc normal
     unsigned int vertoffset = optixGetPrimitiveIndex() * 3;
 
-    /*
-    const float2 uv = optixGetTriangleBarycentrics();
-    float3 v0_interp = uv.x * params.normals[vertoffset] + (1.0f - uv.x) * params.normals[vertoffset+1];
-    float3 v1_interp = uv.y * params.normals[vertoffset] + (1.0f - uv.y) * params.normals[vertoffset+1];
-    */
-
     float3 v0 = params.vertices[vertoffset + 1] - params.vertices[vertoffset];
-
     float3 v1 = params.vertices[vertoffset + 2] - params.vertices[vertoffset];
 
     float3 normal = normalize(cross(v0, v1));
 
-    setPayload(normal);
+    const float3 P = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection() + normal * 0.0001f;
+
+    const uint3 idx = optixGetLaunchIndex();
+    const uint3 dim = optixGetLaunchDimensions();
+    unsigned int seed = tea<4>(idx.x + dim.x * idx.y, params.dt);
+
+    // jittered light dir
+    const float3 light_dir = { 0.71f + rnd(seed) * 0.01f, 0.71f + rnd(seed) * 0.01f, 0.0f + rnd(seed) * 0.01f };
+
+    optixTraverse(params.handle,
+        P,
+        light_dir,
+        0.01,
+        1e16f,
+        0.0f,// rayTime
+        OptixVisibilityMask(1),
+        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_ANYHIT,
+        0,// SBT offset
+        1,// SBT stride
+        0// missSBTIndex
+    );
+
+    const float3 shadow_color = { 0.0f, 0.0f, 0.0f };
+    const float3 light_color = { 0.25f, 0.25f, 0.25f };
+
+    float3 result = optixHitObjectIsHit() ? shadow_color : light_color;
+
+    Onb onb(normal);
+
+    const float u1 = rnd(seed);
+    const float u2 = rnd(seed);
+    float3 out;
+    cosine_sample_hemisphere(u1, u2, out);
+
+    onb.inverse_transform(out);
+
+    // We are only casting probe rays so no shader invocation is needed
+    optixTraverse(params.handle,
+        P,
+        out,
+        0.01,
+        1e16f,
+        0.0f,// rayTime
+        OptixVisibilityMask(1),
+        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_ANYHIT,
+        0,// SBT offset
+        1,// SBT stride
+        0// missSBTIndex
+    );
+
+    result += optixHitObjectIsHit() ? shadow_color : light_color;
+    setPayload(result);
 }

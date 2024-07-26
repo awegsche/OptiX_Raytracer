@@ -63,8 +63,8 @@ std::tuple<std::vector<float3>, std::vector<float3>> load_assimp(const std::stri
     for (int i = -10; i < 10; ++i) {
         for (int j = -10; j < 10; ++j) {
             vertices.push_back({ (float)i * 0.1f, floor, (float)j * 0.1f });
-            vertices.push_back({ (float)(i + 1) * 0.1f, floor, (float)j * 0.1f });
             vertices.push_back({ (float)i * 0.1f, floor, (float)(j + 1) * 0.1f });
+            vertices.push_back({ (float)(i + 1) * 0.1f, floor, (float)j * 0.1f });
 
             vertices.push_back({ (float)(i + 1) * 0.1f, floor, (float)j * 0.1f });
             vertices.push_back({ (float)i * 0.1f, floor, (float)(j + 1) * 0.1f });
@@ -120,15 +120,14 @@ TriangleGAS::TriangleGAS(const Device &device, const std::string &filename)
         triangle_input.triangleArray.flags = triangle_input_flags;
         triangle_input.triangleArray.numSbtRecords = 1;
 
-        OptixAccelBufferSizes gas_buffer_sizes;
         OPTIX_CHECK(optixAccelComputeMemoryUsage(device.get_context(),
             &accel_options,
             &triangle_input,
             1,// Number of build inputs
-            &gas_buffer_sizes));
+            &m_gas_buffer_sizes));
         CUdeviceptr d_temp_buffer_gas;
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_temp_buffer_gas), gas_buffer_sizes.tempSizeInBytes));
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&m_d_gas_output_buffer), gas_buffer_sizes.outputSizeInBytes));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_temp_buffer_gas), m_gas_buffer_sizes.tempSizeInBytes));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&m_d_gas_output_buffer), m_gas_buffer_sizes.outputSizeInBytes));
 
         OPTIX_CHECK(optixAccelBuild(device.get_context(),
             0,// CUDA stream
@@ -136,9 +135,9 @@ TriangleGAS::TriangleGAS(const Device &device, const std::string &filename)
             &triangle_input,
             1,// num build inputs
             d_temp_buffer_gas,
-            gas_buffer_sizes.tempSizeInBytes,
+            m_gas_buffer_sizes.tempSizeInBytes,
             m_d_gas_output_buffer,
-            gas_buffer_sizes.outputSizeInBytes,
+            m_gas_buffer_sizes.outputSizeInBytes,
             &m_gas_handle,
             nullptr,// emitted property list
             0// num emitted properties
