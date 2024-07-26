@@ -16,6 +16,8 @@
 class Camera
 {
   public:
+    __host__ void set_lookat(float3 new_lookat) { m_lookat = new_lookat; }
+
     __host__ void set_eye(float3 new_eye) { m_eye = new_eye; }
 
     /** @brief Sets focal distance

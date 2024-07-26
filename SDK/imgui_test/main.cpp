@@ -40,7 +40,11 @@
 
 using sutil::GLDisplay;
 
+#ifdef NDEBUG
 constexpr int DOWNSAMPLING = 1;
+#else
+constexpr int DOWNSAMPLING = 4;
+#endif
 constexpr int32_t side_panel_width = 256;
 constexpr int window_width = 1024;
 constexpr int window_height = 768;
@@ -91,7 +95,7 @@ int main(int argc, char *argv[])
     float fov = 45.0f;
     float fod = 2.0f;
     int spf = 8;
-    float aperture = 0.5f;
+    float aperture = 0.0f;
     bool orhto = false;
     int width = window_width - side_panel_width;
     int height = window_height;
@@ -272,6 +276,7 @@ int main(int argc, char *argv[])
 
         Camera cam{};
         cam.set_eye({ 0.0, 1.0, -10.0 });
+        cam.set_lookat({ 0.0, 0.1, 0.0 });
         cam.set_aperture(0.0);
         cam.set_fd(1.0);
         cam.set_fov(45.0);
@@ -289,189 +294,180 @@ int main(int argc, char *argv[])
 #ifdef NDEBUG
         spf = 5;
 #else
-        spf = 3;
+        spf = 1;
 #endif
         params.image = output_buffer.map();
         params.image_width = buf_width;
         params.image_height = buf_height;
         params.handle = triangles.get_gas_handle();
 
+        // gui
+        sutil::ImageBuffer buffer;
+
+        buffer.data = output_buffer.getHostPointer();
+        buffer.width = buf_width;
+        buffer.height = buf_height;
+        buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
+
+
         //
-        // Display results
+        // Initialize GLFW state
         //
-        {
-            // gui
-            sutil::ImageBuffer buffer;
+        GLFWwindow *window = nullptr;
+        glfwSetErrorCallback(errorCallback);
+        if (!glfwInit()) throw std::runtime_error("Failed to initialize GLFW");
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);// To make Apple happy -- should not be needed
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+        window = glfwCreateWindow(window_width, height, "sfef", nullptr, nullptr);
+        if (!window) throw std::runtime_error("Failed to create GLFW window");
+        glfwMakeContextCurrent(window);
+        glfwSetKeyCallback(window, keyCallback);
+
+
+        //
+        // Initialize GL state
+        //
+        initGL();
+        GLDisplay display(buffer.pixel_format);
+
+        GLuint pbo = 0u;
+        GL_CHECK(glGenBuffers(1, &pbo));
+        GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, pbo));
+        GL_CHECK(glBufferData(GL_ARRAY_BUFFER,
+            pixelFormatSize(buffer.pixel_format) * buffer.width * buffer.height,
+            buffer.data,
+            GL_STREAM_DRAW));
+        GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, 0));
+        // sutil::displayBufferWindow(argv[0], buffer);
+        //
+        // Display loop
+        //
+
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGui::StyleColorsDark();
+        ImGui_ImplGlfw_InitForOpenGL(window, true);
+        ImGui_ImplOpenGL3_Init("#version 130");
+
+        int framebuf_res_x = 0, framebuf_res_y = 0;
+        int step = 0;
+
+        spdlog::info("start loop");
+        while (!glfwWindowShouldClose(window)) {
+            glfwPollEvents();
+            // glfwWaitEvents();
+
+            ++step;
+            if (params.dirty) params.dt = 0;
+
+            params.dirty = false;
+
+            if (!stop_to_render) {
+                const float phase = static_cast<float>(step) * 1.0e-2;
+                cam.set_eye({ 2.0f * sin(phase), 0.5f, 2.0f * cos(phase) });
+                params.dirty = true;
+            }
+
+            // render
+            cam.set_fov(fov);
+            cam.set_fd(fod);
+            cam.set_ortho(orhto);
+            cam.set_aperture(aperture);
+            cam.compute_uvw();
+            cam.update_device_ptr(params.camera);
+
+            params.image = output_buffer.map();
+            params.image_width = buf_width;
+            params.image_height = buf_height;
+            params.handle = triangles.get_gas_handle();
+
+            params.frame_step();
+
+            const CUdeviceptr d_param = params.to_device();
+
+            OPTIX_CHECK(
+                optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
+            CUDA_SYNC_CHECK();
+
+            output_buffer.unmap();
+            CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
 
             buffer.data = output_buffer.getHostPointer();
-            buffer.width = buf_width;
-            buffer.height = buf_height;
-            buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
 
-            if (outfile.empty()) {
+            GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, pbo));
+            GL_CHECK(glBufferData(GL_ARRAY_BUFFER,
+                pixelFormatSize(buffer.pixel_format) * buffer.width * buffer.height,
+                buffer.data,
+                GL_STREAM_DRAW));
+            GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, 0));
 
-                //
-                // Initialize GLFW state
-                //
-                GLFWwindow *window = nullptr;
-                glfwSetErrorCallback(errorCallback);
-                if (!glfwInit()) throw std::runtime_error("Failed to initialize GLFW");
-                glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-                glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-                glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);// To make Apple happy -- should not be needed
-                glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
 
-                window = glfwCreateWindow(window_width, height, "sfef", nullptr, nullptr);
-                if (!window) throw std::runtime_error("Failed to create GLFW window");
-                glfwMakeContextCurrent(window);
-                glfwSetKeyCallback(window, keyCallback);
-
-
-                //
-                // Initialize GL state
-                //
-                initGL();
-                GLDisplay display(buffer.pixel_format);
-
-                GLuint pbo = 0u;
-                GL_CHECK(glGenBuffers(1, &pbo));
-                GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, pbo));
-                GL_CHECK(glBufferData(GL_ARRAY_BUFFER,
-                    pixelFormatSize(buffer.pixel_format) * buffer.width * buffer.height,
-                    buffer.data,
-                    GL_STREAM_DRAW));
-                GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, 0));
-                // sutil::displayBufferWindow(argv[0], buffer);
-                //
-                // Display loop
-                //
-
-                IMGUI_CHECKVERSION();
-                ImGui::CreateContext();
-                ImGui::StyleColorsDark();
-                ImGui_ImplGlfw_InitForOpenGL(window, true);
-                ImGui_ImplOpenGL3_Init("#version 130");
-
-                int framebuf_res_x = 0, framebuf_res_y = 0;
-                int step = 0;
-
-                spdlog::info("start loop");
-                do {
-                    glfwPollEvents();
-                    // glfwWaitEvents();
-
-                    ++step;
-                    if (params.dirty) params.dt = 0;
-
-                    params.dirty = false;
-
-                    if (!stop_to_render) {
-                        const float phase = static_cast<float>(step) * 1.0e-2;
-                        cam.set_eye({ 2.0f * sin(phase), 0.5f, 2.0f * cos(phase) });
-                        params.dirty = true;
-                    }
-
-                    // render
-                    cam.set_fov(fov);
-                    cam.set_fd(fod);
-                    cam.set_ortho(orhto);
-                    cam.set_aperture(aperture);
-                    cam.compute_uvw();
-                    cam.update_device_ptr(params.camera);
-
-                    params.image = output_buffer.map();
-                    params.image_width = buf_width;
-                    params.image_height = buf_height;
-                    params.handle = triangles.get_gas_handle();
-
-                    params.frame_step();
-
-                    const CUdeviceptr d_param = params.to_device();
-
-                    OPTIX_CHECK(optixLaunch(
-                        pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
-                    CUDA_SYNC_CHECK();
-
-                    output_buffer.unmap();
-                    CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
-
-                    buffer.data = output_buffer.getHostPointer();
-
-                    GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, pbo));
-                    GL_CHECK(glBufferData(GL_ARRAY_BUFFER,
-                        pixelFormatSize(buffer.pixel_format) * buffer.width * buffer.height,
-                        buffer.data,
-                        GL_STREAM_DRAW));
-                    GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, 0));
-
-                    ImGui_ImplOpenGL3_NewFrame();
-                    ImGui_ImplGlfw_NewFrame();
-                    ImGui::NewFrame();
-
-                    ImGui::SetNextWindowPos({ 0, 0 }, ImGuiCond_::ImGuiCond_Always);
-                    ImGui::SetNextWindowSize(
-                        { static_cast<float>(side_panel_width), static_cast<float>(height) }, ImGuiCond_Always);
+            ImGui::SetNextWindowPos({ 0, 0 }, ImGuiCond_::ImGuiCond_Always);
+            ImGui::SetNextWindowSize(
+                { static_cast<float>(side_panel_width), static_cast<float>(height) }, ImGuiCond_Always);
 
 #ifdef NDEBUG
-                    ImGui::Begin("Release",
-                        0,
-                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+            ImGui::Begin(
+                "Release", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 #else
-                    ImGui::Begin(
-                        "Debug", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+            ImGui::Begin("Debug", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 #endif
-                    {
-                        if (ImGui::CollapsingHeader("Window")) {
-                            ImGui::Text("Window Width: %d", window_width);
-                            ImGui::Text("Window Height: %d", height);
+            {
+                if (ImGui::CollapsingHeader("Window")) {
+                    ImGui::Text("Window Width: %d", window_width);
+                    ImGui::Text("Window Height: %d", height);
 
-                            ImGui::Text("Buffer Width: %d", width);
-                            ImGui::Text("Buffer Height: %d", height);
+                    ImGui::Text("Buffer Width: %d", width);
+                    ImGui::Text("Buffer Height: %d", height);
 
-                            ImGui::Text("Step: %d", step);
+                    ImGui::Text("Step: %d", step);
 
-                            ImGui::Text("Camera:");
-                            // ImGui::Text("(%.2f, %.2f, %.2f", params.cam_eye.x, params.cam_eye.y, params.cam_eye.z);
-                        }
-                    }
+                    ImGui::Text("Camera:");
+                    // ImGui::Text("(%.2f, %.2f, %.2f", params.cam_eye.x, params.cam_eye.y, params.cam_eye.z);
+                }
+            }
 
-                    if (ImGui::CollapsingHeader("Settings")) {
-                        params.dirty |= ImGui::Checkbox("Orthographic", &orhto);
-                        params.dirty |= ImGui::SliderFloat("T Factor", &params.tfactor, 0.0, 1.0);
-                        params.dirty |= ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
-                        params.dirty |= ImGui::SliderFloat("Aperture", &aperture, 0.0f, 1.0f);
-                        params.dirty |= ImGui::SliderFloat("Focal length", &fod, 0.2f, 10.0f);
-                        params.dirty |= ImGui::SliderInt("SPF", &spf, 0, 10);
-                        params.samples_per_frame = static_cast<unsigned int>(pow(2, spf));
-                        ImGui::Text("Samples per Frame: %d", params.samples_per_frame);
-                    }
+            if (ImGui::CollapsingHeader("Settings")) {
+                params.dirty |= ImGui::Checkbox("Orthographic", &orhto);
+                params.dirty |= ImGui::SliderFloat("T Factor", &params.tfactor, 0.0, 1.0);
+                params.dirty |= ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
+                params.dirty |= ImGui::SliderFloat("Aperture", &aperture, 0.0f, 1.0f);
+                params.dirty |= ImGui::SliderFloat("Focal length", &fod, 0.2f, 10.0f);
+                params.dirty |= ImGui::SliderInt("SPF", &spf, 0, 10);
+                params.samples_per_frame = static_cast<unsigned int>(pow(2, spf));
+                ImGui::Text("Samples per Frame: %d", params.samples_per_frame);
+            }
 
 
-                    device.imgui();
+            device.imgui();
+            triangles.imgui();
 
-                    ImGui::End();
+            ImGui::End();
 
-                    ImGui::Render();
+            ImGui::Render();
 
-                    // cam.
+            // cam.
 
-                    glfwGetFramebufferSize(window, &framebuf_res_x, &framebuf_res_y);
-                    display.display(buffer.width,
-                        buffer.height,
-                        side_panel_width,
-                        0,
-                        framebuf_res_x - side_panel_width,
-                        framebuf_res_y,
-                        pbo);
-                    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-                    glfwSwapBuffers(window);
-                } while (!glfwWindowShouldClose(window));
-
-                glfwDestroyWindow(window);
-                glfwTerminate();
-            } else
-                sutil::saveImage(outfile.c_str(), buffer, false);
+            glfwGetFramebufferSize(window, &framebuf_res_x, &framebuf_res_y);
+            display.display(buffer.width,
+                buffer.height,
+                side_panel_width,
+                0,
+                framebuf_res_x - side_panel_width,
+                framebuf_res_y,
+                pbo);
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            glfwSwapBuffers(window);
         }
+
+        glfwDestroyWindow(window);
+        glfwTerminate();
 
         //
         // Cleanup
