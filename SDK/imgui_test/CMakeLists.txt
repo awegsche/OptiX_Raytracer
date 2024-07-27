@@ -43,4 +43,5 @@ target_link_libraries( ${target_name}
   ${CUDA_LIBRARIES}
   spdlog::spdlog
   assimp::assimp
+  CLI11::CLI11
   )

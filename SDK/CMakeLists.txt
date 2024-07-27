@@ -576,7 +576,10 @@ add_subdirectory( imgui_test              )
 # Our sutil library.  The rules to build it are found in the subdirectory.
 add_subdirectory(sutil)
 # Third-party support libraries.
+# OptiX SDK ones:
 add_subdirectory(support)
+# Mine:
+add_subdirectory(ext)
 
 #################################################################
 

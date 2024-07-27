@@ -16,6 +16,7 @@
 #include <sutil/GLDisplay.h>
 #include <sutil/sutil.h>
 
+#include "CLI/CLI.hpp"
 #include "cuda_runtime_api.h"
 #include "driver_types.h"
 #include "optixTriangle.h"
@@ -33,6 +34,7 @@
 #include <imgui/imgui_impl_glfw.h>
 #include <imgui/imgui_impl_opengl3.h>
 #include <spdlog/spdlog.h>
+#include <CLI/CLI.hpp>
 
 #include "device.h"
 #include "make_geometry.h"
@@ -94,7 +96,23 @@ static void keyCallback(GLFWwindow *window, int32_t key, int32_t /*scancode*/, i
 
 int main(int argc, char *argv[])
 {
+    CLI::App app("Raytracer");
     std::string outfile;
+    std::string modelfile;
+
+    CLI::Option * out_opt = app.add_option("-o,--outfile,outfile", outfile, "render outputfile");
+    CLI::Option * model_opt = app.add_option("-m,--model,model", modelfile, "3D model to load");
+
+    CLI11_PARSE(app, argc, argv);
+
+    if (modelfile.empty()) {
+        spdlog::error("no model file given, nothing to render. ABORT");
+        return 1;
+    }
+    if (outfile.empty()) {
+        outfile = "last_render.png";
+        spdlog::warn("no outfile given, render to \"{}\"", outfile);
+    }
 
     float fov = 45.0f;
     float fod = 2.0f;
@@ -111,7 +129,7 @@ int main(int argc, char *argv[])
 
         Device device;
 
-        TriangleGAS triangles(device, "C:/Users/andiw/3D Objects/bunny/reconstruction/bun_zipper.ply");
+        TriangleGAS triangles(device, modelfile);
         //
         spdlog::info("Create module");
         //
@@ -367,7 +385,7 @@ int main(int argc, char *argv[])
             if (render_to_file) {
                 render_to_file = false;
 
-                sutil::saveImage("last_render.png", buffer, false);
+                sutil::saveImage(outfile.c_str(), buffer, false);
             }
 
             ++step;
@@ -453,7 +471,6 @@ int main(int argc, char *argv[])
                 params.samples_per_frame = static_cast<unsigned int>(pow(2, spf));
                 ImGui::Text("Samples per Frame: %d", params.samples_per_frame);
             }
-
 
             device.imgui();
             triangles.imgui();
