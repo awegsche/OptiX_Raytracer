@@ -23,6 +23,7 @@
 
 using sutil::GLDisplay;
 
+// ---- CONSTS -------------------------------------------------------------------------------------
 constexpr int32_t SIDE_PANEL_WIDTH = 256;
 constexpr int WINDOW_WIDTH = 1024;
 constexpr int WINDOW_HEIGHT = 768;
@@ -33,8 +34,8 @@ constexpr int DOWNSAMPLING = 1;
 constexpr int DOWNSAMPLING = 4;
 #endif
 
-extern bool render_to_file;
 
+// ---- Moving Struct ------------------------------------------------------------------------------
 struct Moving
 {
     bool forward = false;
@@ -49,8 +50,11 @@ struct Moving
     bool down = false;
 };
 
+// ---- Global Variables ---------------------------------------------------------------------------
+extern bool render_to_file;
 extern Moving moving;
 
+// ---- OpenGL Init and Callbacks ------------------------------------------------------------------
 void initGL();
 
 static void errorCallback(int error, const char *description)
@@ -137,9 +141,23 @@ static void keyCallback(GLFWwindow *window, int32_t key, int32_t /*scancode*/, i
     }
 }
 
+// ---- TracerWindow -------------------------------------------------------------------------------
 class TracerWindow
 {
   public:
+    /**
+     * @brief A Window that displays a perspective view into the current scene and showcases the
+     * rendering progress in real time.
+     *
+     * @param stream 
+     * @param pipeline 
+     * @param sbt 
+     * @param params 
+     * @param window_width 
+     * @param window_height 
+     * @param outfile 
+     * @param triangles 
+     */
     TracerWindow(CUstream stream,
         OptixPipeline pipeline,
         OptixShaderBindingTable sbt,
@@ -152,10 +170,13 @@ class TracerWindow
     void run() noexcept;
 
   private:
+    // ---- Private Functions ----------------------------------------------------------------------
     void update_camera() noexcept;
 
     void imgui() noexcept;
-    // window parameters
+
+    // ---- Fields ---------------------------------------------------------------------------------
+    // ---- --- Window Parameters ------------------------------------------------------------------
     int window_width;
     int width;
     int height;
@@ -165,6 +186,7 @@ class TracerWindow
 
     std::string outfile;
 
+    // ---- --- Local Camera Parameters ------------------------------------------------------------
     float fov = 45.0f;
     float fod = 2.0f;
     int spf = 8;
@@ -172,10 +194,12 @@ class TracerWindow
     bool orhto = false;
     GLFWwindow *window = nullptr;
 
+    // ---- --- Buffers and GL Interop -------------------------------------------------------------
     sutil::ImageBuffer buffer;
     sutil::CUDAOutputBuffer<uchar4> output_buffer;
     GLuint pbo = 0u;
 
+    // ---- --- Render Objects ---------------------------------------------------------------------
     Camera cam;
     Params params;
     TriangleGAS *triangles = nullptr;
