@@ -36,6 +36,7 @@ OPTIX_add_sample_executable( imgui_test target_name
   optixTriangle.cu
   main.cpp
   optixTriangle.h
+  tracer_window.cpp
   OPTIONS -rdc true
   )
 
