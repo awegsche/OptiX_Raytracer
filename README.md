@@ -2,7 +2,7 @@
 
 Programming a Raytracer using NVIDIA's OptiX framework.
 
-![Last render](SDK/last_render.png "Current state of the renderer")
+![Last render](SDK/cover.png "Current state of the renderer")
 
 ## Status
 
