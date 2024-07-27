@@ -150,14 +150,14 @@ class TracerWindow
      * @brief A Window that displays a perspective view into the current scene and showcases the
      * rendering progress in real time.
      *
-     * @param stream 
-     * @param pipeline 
-     * @param sbt 
-     * @param params 
-     * @param window_width 
-     * @param window_height 
-     * @param outfile 
-     * @param triangles 
+     * @param stream
+     * @param pipeline
+     * @param sbt
+     * @param params
+     * @param window_width
+     * @param window_height
+     * @param outfile
+     * @param triangles
      */
     TracerWindow(CUstream stream,
         OptixPipeline pipeline,
@@ -170,9 +170,7 @@ class TracerWindow
 
     void run() noexcept;
 
-    void set_outfile(std::string const& outfile) noexcept {
-        this->outfile = outfile;
-    }
+    void set_outfile(std::string const &outfile) noexcept { this->outfile = outfile; }
 
   private:
     // ---- Private Functions ----------------------------------------------------------------------

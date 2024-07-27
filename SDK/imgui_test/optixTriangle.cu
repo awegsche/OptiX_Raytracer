@@ -186,10 +186,10 @@ extern "C" __global__ void __closesthit__ch()
 
     const float ndotwi = dot(normal, light_dir);
 
-    float3 result = {0.0f, 0.0f, 0.0f};
+    float3 result = { 0.0f, 0.0f, 0.0f };
     const float3 shadow_color = { 0.0f, 0.0f, 0.0f };
     const float3 light_color = { 0.25f, 0.2f, 0.15f };
-    const float3 ambient_color = { 0.1f, 0.1f, 0.15f};
+    const float3 ambient_color = { 0.1f, 0.1f, 0.15f };
 
 
     optixTraverse(params.handle,
