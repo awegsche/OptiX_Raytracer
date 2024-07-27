@@ -258,6 +258,7 @@ int main(int argc, char *argv[])
 
         if (gui){
             TracerWindow window{stream, pipeline, sbt, params};
+            window.set_outfile(outfile);
             window.run();
         }
 

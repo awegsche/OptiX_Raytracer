@@ -12,6 +12,7 @@
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <optix_stubs.h>
+#include <utility>
 
 #include "camera.h"
 #include "device.h"
@@ -168,6 +169,10 @@ class TracerWindow
         TriangleGAS *triangles = nullptr);
 
     void run() noexcept;
+
+    void set_outfile(std::string const& outfile) noexcept {
+        this->outfile = outfile;
+    }
 
   private:
     // ---- Private Functions ----------------------------------------------------------------------

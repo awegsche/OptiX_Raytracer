@@ -184,6 +184,14 @@ extern "C" __global__ void __closesthit__ch()
     float3 light_dir = { 0.71f + rnd(seed) * 0.01f, 0.51f + rnd(seed) * 0.01f, 0.0f + rnd(seed) * 0.01f };
     light_dir = normalize(light_dir);
 
+    const float ndotwi = dot(normal, light_dir);
+
+    float3 result = {0.0f, 0.0f, 0.0f};
+    const float3 shadow_color = { 0.0f, 0.0f, 0.0f };
+    const float3 light_color = { 0.25f, 0.2f, 0.15f };
+    const float3 ambient_color = { 0.1f, 0.1f, 0.15f};
+
+
     optixTraverse(params.handle,
         P,
         light_dir,
@@ -197,10 +205,7 @@ extern "C" __global__ void __closesthit__ch()
         0// missSBTIndex
     );
 
-    const float3 shadow_color = { 0.0f, 0.0f, 0.0f };
-    const float3 light_color = { 0.25f, 0.25f, 0.25f };
-
-    float3 result = optixHitObjectIsHit() ? shadow_color : light_color;
+    result += (optixHitObjectIsHit() || ndotwi < 0.0f) ? shadow_color : light_color * ndotwi;
 
     Onb onb(normal);
 
@@ -225,6 +230,6 @@ extern "C" __global__ void __closesthit__ch()
         0// missSBTIndex
     );
 
-    result += optixHitObjectIsHit() ? shadow_color : light_color;
+    result += optixHitObjectIsHit() ? shadow_color : ambient_color;
     setPayload(result);
 }
