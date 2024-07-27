@@ -1,43 +1,37 @@
-
-#include <algorithm>
 #include <cmath>
 #include <fmt/core.h>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+#include <sampleConfig.h>
+
+#include <sutil/CUDAOutputBuffer.h>
+#include <sutil/Camera.h>
+#include <sutil/Exception.h>
+#include <sutil/GLDisplay.h>
+#include <sutil/Trackball.h>
+#include <sutil/sutil.h>
+
+
+#include <cuda_runtime.h>
+#include <cuda_runtime_api.h>
+#include <driver_types.h>
 #include <optix.h>
 #include <optix_stack_size.h>
 #include <optix_stubs.h>
 
-#include <cuda_runtime.h>
-
-#include <sampleConfig.h>
-
-#include <stdexcept>
-#include <sutil/CUDAOutputBuffer.h>
-#include <sutil/Exception.h>
-#include <sutil/GLDisplay.h>
-#include <sutil/sutil.h>
-
-#include "CLI/CLI.hpp"
-#include "cuda_runtime_api.h"
-#include "driver_types.h"
-#include "optixTriangle.h"
-
-#include <array>
-#include <iostream>
-#include <string>
-
-#include <sutil/Camera.h>
-#include <sutil/Trackball.h>
-
+#include <CLI/CLI.hpp>
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <imgui/imgui.h>
 #include <imgui/imgui_impl_glfw.h>
 #include <imgui/imgui_impl_opengl3.h>
 #include <spdlog/spdlog.h>
-#include <CLI/CLI.hpp>
 
 #include "device.h"
 #include "make_geometry.h"
+#include "optixTriangle.h"
 #include "triangle_gas.h"
 
 using sutil::GLDisplay;
@@ -83,13 +77,9 @@ static void keyCallback(GLFWwindow *window, int32_t key, int32_t /*scancode*/, i
 {
     if (action == GLFW_PRESS) {
         if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE) { glfwSetWindowShouldClose(window, true); }
-        if (key == GLFW_KEY_SPACE) { stop_to_render = true; }
-    }
-
-    if (action == GLFW_RELEASE) {
         if (key == GLFW_KEY_SPACE) {
-            stop_to_render = false;
-            render_to_file = true;
+            render_to_file = stop_to_render;
+            stop_to_render = !stop_to_render;
         }
     }
 }
@@ -100,8 +90,8 @@ int main(int argc, char *argv[])
     std::string outfile;
     std::string modelfile;
 
-    CLI::Option * out_opt = app.add_option("-o,--outfile,outfile", outfile, "render outputfile");
-    CLI::Option * model_opt = app.add_option("-m,--model,model", modelfile, "3D model to load");
+    CLI::Option *out_opt = app.add_option("-o,--outfile,outfile", outfile, "render outputfile");
+    CLI::Option *model_opt = app.add_option("-m,--model,model", modelfile, "3D model to load");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -388,12 +378,12 @@ int main(int argc, char *argv[])
                 sutil::saveImage(outfile.c_str(), buffer, false);
             }
 
-            ++step;
             if (params.dirty) params.dt = 0;
 
             params.dirty = false;
 
             if (!stop_to_render) {
+                ++step;
                 const float phase = static_cast<float>(step) * 1.0e-2;
                 cam.set_eye({ 2.0f * sin(phase), 0.5f, 2.0f * cos(phase) });
                 params.dirty = true;
