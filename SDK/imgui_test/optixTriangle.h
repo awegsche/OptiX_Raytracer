@@ -1,3 +1,5 @@
+#ifndef __PARAMS_H__
+#define __PARAMS_H__
 //
 // Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 //
@@ -72,6 +74,10 @@ struct Params
         return ptr;
     }
 
+    __host__ void alloc_film() {
+        cudaMalloc(&film, sizeof(float3) * image_width * image_height);
+    }
+
     __host__ void frame_step() { dt += samples_per_frame; }
 };
 
@@ -92,3 +98,5 @@ struct HitGroupData
 {
     // No data needed
 };
+
+#endif

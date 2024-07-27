@@ -50,6 +50,41 @@ class Camera
      */
     __host__ void set_ortho(bool new_ortho) { m_ortho = new_ortho; }
 
+    __host__ void move_forward() {
+        m_eye += w * m_speed;
+    }
+    __host__ void move_backward() {
+        m_eye -= w * m_speed;
+    }
+    __host__ void move_left() {
+        m_eye -= u * m_speed;
+        m_lookat -= u * m_speed;
+    }
+    __host__ void move_right() {
+        m_eye += u * m_speed;
+        m_lookat += u * m_speed;
+    }
+    __host__ void move_up() {
+        m_eye += v * m_speed;
+        m_lookat += v * m_speed;
+    }
+    __host__ void move_down() {
+        m_eye -= v * m_speed;
+        m_lookat -= v * m_speed;
+    }
+    __host__ void turn_up() {
+        m_lookat += v * m_speed;
+    }
+    __host__ void turn_down() {
+        m_lookat -= v * m_speed;
+    }
+    __host__ void turn_right() {
+        m_lookat += u * m_speed;
+    }
+    __host__ void turn_left() {
+        m_lookat -= u * m_speed;
+    }
+
     /**
      * @brief Allocates Camera on device memory and returns the pointer to it
      *
@@ -135,6 +170,9 @@ class Camera
     float m_fov = 45.0f;
     float m_fd = 1.0f;
     float m_aperture = 0.0f;
+
+    // movement
+    float m_speed = 0.01f;
 
     // orthogonal basis
     float3 u = {};

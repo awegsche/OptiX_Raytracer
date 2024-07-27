@@ -9,8 +9,6 @@
 #include <sutil/CUDAOutputBuffer.h>
 #include <sutil/Camera.h>
 #include <sutil/Exception.h>
-#include <sutil/GLDisplay.h>
-#include <sutil/Trackball.h>
 #include <sutil/sutil.h>
 
 
@@ -22,28 +20,14 @@
 #include <optix_stubs.h>
 
 #include <CLI/CLI.hpp>
-#include <GLFW/glfw3.h>
-#include <glad/glad.h>
-#include <imgui/imgui.h>
-#include <imgui/imgui_impl_glfw.h>
-#include <imgui/imgui_impl_opengl3.h>
 #include <spdlog/spdlog.h>
 
 #include "device.h"
 #include "make_geometry.h"
 #include "optixTriangle.h"
 #include "triangle_gas.h"
+#include "tracer_window.h"
 
-using sutil::GLDisplay;
-
-#ifdef NDEBUG
-constexpr int DOWNSAMPLING = 1;
-#else
-constexpr int DOWNSAMPLING = 4;
-#endif
-constexpr int32_t side_panel_width = 256;
-constexpr int window_width = 1024;
-constexpr int window_height = 768;
 
 template<typename T> struct SbtRecord
 {
@@ -55,43 +39,16 @@ using RayGenSbtRecord = SbtRecord<RayGenData>;
 using MissSbtRecord = SbtRecord<MissData>;
 using HitGroupSbtRecord = SbtRecord<HitGroupData>;
 
-bool stop_to_render = false;
-bool render_to_file = false;
-
-void initGL()
-{
-    spdlog::debug("init GL");
-    if (gladLoadGL() == 0) throw std::runtime_error("Failed to initialize GL");
-
-    GL_CHECK(glClearColor(0.212f, 0.271f, 0.31f, 1.0f));
-    GL_CHECK(glClear(GL_COLOR_BUFFER_BIT));
-}
-
-
-static void errorCallback(int error, const char *description)
-{
-    std::cerr << "GLFW Error " << error << ": " << description << std::endl;
-}
-
-static void keyCallback(GLFWwindow *window, int32_t key, int32_t /*scancode*/, int32_t action, int32_t /*mods*/)
-{
-    if (action == GLFW_PRESS) {
-        if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE) { glfwSetWindowShouldClose(window, true); }
-        if (key == GLFW_KEY_SPACE) {
-            render_to_file = stop_to_render;
-            stop_to_render = !stop_to_render;
-        }
-    }
-}
-
 int main(int argc, char *argv[])
 {
     CLI::App app("Raytracer");
     std::string outfile;
     std::string modelfile;
+    bool gui = false;
 
     CLI::Option *out_opt = app.add_option("-o,--outfile,outfile", outfile, "render outputfile");
     CLI::Option *model_opt = app.add_option("-m,--model,model", modelfile, "3D model to load");
+    CLI::Option *gui_opt = app.add_flag("-w,--window", gui, "Run in windowed mode");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -104,16 +61,6 @@ int main(int argc, char *argv[])
         spdlog::warn("no outfile given, render to \"{}\"", outfile);
     }
 
-    float fov = 45.0f;
-    float fod = 2.0f;
-    int spf = 8;
-    float aperture = 0.0f;
-    bool orhto = false;
-    int width = window_width - side_panel_width;
-    int height = window_height;
-
-    int buf_width = width / DOWNSAMPLING;
-    int buf_height = height / DOWNSAMPLING;
 
     try {
 
@@ -281,10 +228,12 @@ int main(int argc, char *argv[])
             sbt.hitgroupRecordCount = 1;
         }
 
-        sutil::CUDAOutputBuffer<uchar4> output_buffer(sutil::CUDAOutputBufferType::CUDA_DEVICE, buf_width, buf_height);
 
         CUstream stream;
         CUDA_CHECK(cudaStreamCreate(&stream));
+
+
+        // ---- setup scene -----------------------------------------------------------------------
 
         Camera cam{};
         cam.set_eye({ 0.0, 1.0, -10.0 });
@@ -297,194 +246,20 @@ int main(int argc, char *argv[])
         Params params;
         params.camera = cam.new_device_ptr();
         params.vertices = triangles.get_device_vertices();
+        params.handle = triangles.get_gas_handle();
         // params.normals = triangles.get_device_normals();
         params.tfactor = 0.5f;
         params.dt = 0;
 
+        /*
+        sutil::CUDAOutputBuffer<uchar4> output_buffer(sutil::CUDAOutputBufferType::CUDA_DEVICE, buf_width, buf_height);
         CUDA_CHECK(cudaMalloc(&params.film, sizeof(float3) * buf_width * buf_height));
+        */
 
-#ifdef NDEBUG
-        spf = 5;
-#else
-        spf = 1;
-#endif
-        params.image = output_buffer.map();
-        params.image_width = buf_width;
-        params.image_height = buf_height;
-        params.handle = triangles.get_gas_handle();
-
-        // gui
-        sutil::ImageBuffer buffer;
-
-        buffer.data = output_buffer.getHostPointer();
-        buffer.width = buf_width;
-        buffer.height = buf_height;
-        buffer.pixel_format = sutil::BufferImageFormat::UNSIGNED_BYTE4;
-
-
-        //
-        // Initialize GLFW state
-        //
-        GLFWwindow *window = nullptr;
-        glfwSetErrorCallback(errorCallback);
-        if (!glfwInit()) throw std::runtime_error("Failed to initialize GLFW");
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);// To make Apple happy -- should not be needed
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-        window = glfwCreateWindow(window_width, height, "sfef", nullptr, nullptr);
-        if (!window) throw std::runtime_error("Failed to create GLFW window");
-        glfwMakeContextCurrent(window);
-        glfwSetKeyCallback(window, keyCallback);
-
-
-        //
-        // Initialize GL state
-        //
-        initGL();
-        GLDisplay display(buffer.pixel_format);
-
-        GLuint pbo = 0u;
-        GL_CHECK(glGenBuffers(1, &pbo));
-        GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, pbo));
-        GL_CHECK(glBufferData(GL_ARRAY_BUFFER,
-            pixelFormatSize(buffer.pixel_format) * buffer.width * buffer.height,
-            buffer.data,
-            GL_STREAM_DRAW));
-        GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, 0));
-        // sutil::displayBufferWindow(argv[0], buffer);
-        //
-        // Display loop
-        //
-
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
-        ImGui::StyleColorsDark();
-        ImGui_ImplGlfw_InitForOpenGL(window, true);
-        ImGui_ImplOpenGL3_Init("#version 130");
-
-        int framebuf_res_x = 0, framebuf_res_y = 0;
-        int step = 0;
-
-        spdlog::info("start loop");
-        while (!glfwWindowShouldClose(window)) {
-            glfwPollEvents();
-            // glfwWaitEvents();
-
-            if (render_to_file) {
-                render_to_file = false;
-
-                sutil::saveImage(outfile.c_str(), buffer, false);
-            }
-
-            if (params.dirty) params.dt = 0;
-
-            params.dirty = false;
-
-            if (!stop_to_render) {
-                ++step;
-                const float phase = static_cast<float>(step) * 1.0e-2;
-                cam.set_eye({ 2.0f * sin(phase), 0.5f, 2.0f * cos(phase) });
-                params.dirty = true;
-            }
-
-            // render
-            cam.set_fov(fov);
-            cam.set_fd(fod);
-            cam.set_ortho(orhto);
-            cam.set_aperture(aperture);
-            cam.compute_uvw();
-            cam.update_device_ptr(params.camera);
-
-            params.image = output_buffer.map();
-            params.image_width = buf_width;
-            params.image_height = buf_height;
-            params.handle = triangles.get_gas_handle();
-
-            params.frame_step();
-
-            const CUdeviceptr d_param = params.to_device();
-
-            OPTIX_CHECK(
-                optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
-            CUDA_SYNC_CHECK();
-
-            output_buffer.unmap();
-            CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
-
-            buffer.data = output_buffer.getHostPointer();
-
-            GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, pbo));
-            GL_CHECK(glBufferData(GL_ARRAY_BUFFER,
-                pixelFormatSize(buffer.pixel_format) * buffer.width * buffer.height,
-                buffer.data,
-                GL_STREAM_DRAW));
-            GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, 0));
-
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-
-            ImGui::SetNextWindowPos({ 0, 0 }, ImGuiCond_::ImGuiCond_Always);
-            ImGui::SetNextWindowSize(
-                { static_cast<float>(side_panel_width), static_cast<float>(height) }, ImGuiCond_Always);
-
-#ifdef NDEBUG
-            ImGui::Begin(
-                "Release", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-#else
-            ImGui::Begin("Debug", 0, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-#endif
-            {
-                if (ImGui::CollapsingHeader("Window")) {
-                    ImGui::Text("Window Width: %d", window_width);
-                    ImGui::Text("Window Height: %d", height);
-
-                    ImGui::Text("Buffer Width: %d", width);
-                    ImGui::Text("Buffer Height: %d", height);
-
-                    ImGui::Text("Step: %d", step);
-
-                    ImGui::Text("Camera:");
-                    // ImGui::Text("(%.2f, %.2f, %.2f", params.cam_eye.x, params.cam_eye.y, params.cam_eye.z);
-                }
-            }
-
-            if (ImGui::CollapsingHeader("Settings")) {
-                params.dirty |= ImGui::Checkbox("Orthographic", &orhto);
-                params.dirty |= ImGui::SliderFloat("T Factor", &params.tfactor, 0.0, 1.0);
-                params.dirty |= ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
-                params.dirty |= ImGui::SliderFloat("Aperture", &aperture, 0.0f, 1.0f);
-                params.dirty |= ImGui::SliderFloat("Focal length", &fod, 0.2f, 10.0f);
-                params.dirty |= ImGui::SliderInt("SPF", &spf, 0, 10);
-                params.samples_per_frame = static_cast<unsigned int>(pow(2, spf));
-                ImGui::Text("Samples per Frame: %d", params.samples_per_frame);
-            }
-
-            device.imgui();
-            triangles.imgui();
-
-            ImGui::End();
-
-            ImGui::Render();
-
-            // cam.
-
-            glfwGetFramebufferSize(window, &framebuf_res_x, &framebuf_res_y);
-            display.display(buffer.width,
-                buffer.height,
-                side_panel_width,
-                0,
-                framebuf_res_x - side_panel_width,
-                framebuf_res_y,
-                pbo);
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-            glfwSwapBuffers(window);
+        if (gui){
+            TracerWindow window{stream, pipeline, sbt, params};
+            window.run();
         }
-
-        glfwDestroyWindow(window);
-        glfwTerminate();
 
         //
         // Cleanup
