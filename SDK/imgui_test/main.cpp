@@ -242,7 +242,8 @@ int main(int argc, char *argv[])
         cam.compute_uvw();
 
         PointLight light{};
-        light.set_position({ 0.0, 3000.0, 4000.0 });
+        light.set_position({ 0.0, 0.5, 0.2 });
+        light.set_lumi({0.8, 0.7, 0.2});
 
         Params params;
         params.camera = cam.new_device_ptr();
