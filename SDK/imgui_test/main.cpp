@@ -23,8 +23,8 @@
 #include "device.h"
 #include "make_geometry.h"
 #include "optixTriangle.h"
-#include "triangle_gas.h"
 #include "tracer_window.h"
+#include "triangle_gas.h"
 
 
 template<typename T> struct SbtRecord
@@ -59,11 +59,10 @@ int main(int argc, char *argv[])
         spdlog::warn("no outfile given, render to \"{}\"", outfile);
     }
 
-
     try {
-
         Device device;
 
+        spdlog::warn("model file: {}", modelfile);
         TriangleGAS triangles(device, modelfile);
         //
         spdlog::info("Create module");
@@ -235,14 +234,19 @@ int main(int argc, char *argv[])
 
         Camera cam{};
         cam.set_eye({ 0.0, 1.0, -10.0 });
+        cam.set_up({ 0.0f, 0.0000073f, 1.0f });
         cam.set_lookat({ 0.0, 0.1, 0.0 });
         cam.set_aperture(0.0);
         cam.set_fd(1.0);
         cam.set_fov(45.0);
         cam.compute_uvw();
 
+        PointLight light{};
+        light.set_position({ 0.0, 3000.0, 4000.0 });
+
         Params params;
         params.camera = cam.new_device_ptr();
+        params.light = light.new_device_ptr();
         params.vertices = triangles.get_device_vertices();
         params.handle = triangles.get_gas_handle();
         // params.normals = triangles.get_device_normals();
@@ -254,8 +258,8 @@ int main(int argc, char *argv[])
         CUDA_CHECK(cudaMalloc(&params.film, sizeof(float3) * buf_width * buf_height));
         */
 
-        if (gui){
-            TracerWindow window{stream, pipeline, sbt, params};
+        if (gui) {
+            TracerWindow window{ stream, pipeline, sbt, params };
             window.set_outfile(outfile);
             window.run();
         }
@@ -267,7 +271,7 @@ int main(int argc, char *argv[])
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(sbt.raygenRecord)));
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(sbt.missRecordBase)));
             CUDA_CHECK(cudaFree(reinterpret_cast<void *>(sbt.hitgroupRecordBase)));
-            Params::cleanup(params);
+            params.cleanup();
 
             OPTIX_CHECK(optixPipelineDestroy(pipeline));
             OPTIX_CHECK(optixProgramGroupDestroy(hitgroup_prog_group));

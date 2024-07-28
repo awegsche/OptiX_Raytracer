@@ -1,4 +1,5 @@
 #include "tracer_window.h"
+#include "imgui/imgui.h"
 
 bool render_to_file = false;
 Moving moving{};
@@ -92,7 +93,10 @@ void TracerWindow::run() noexcept
         if (params.dirty) params.dt = 0;
         params.frame_step();
 
-        const CUdeviceptr d_param = params.to_device();
+        const CUdeviceptr d_param = reinterpret_cast<CUdeviceptr>(params.new_device_ptr());
+        // const CUdeviceptr d_param = 0;
+        // cudaMalloc((void**)&d_param, sizeof(Params));
+        // cudaMemcpy((void*)d_param, (const void*)&params, sizeof(Params), cudaMemcpyHostToDevice);
 
         OPTIX_CHECK(optixLaunch(pipeline, stream, d_param, sizeof(Params), &sbt, buf_width, buf_height, /*depth=*/1));
         CUDA_SYNC_CHECK();
@@ -149,10 +153,17 @@ void TracerWindow::imgui() noexcept
 
     if (ImGui::CollapsingHeader("Settings")) {
         params.dirty |= ImGui::Checkbox("Orthographic", &orhto);
+        if (ImGui::CollapsingHeader("Camera")) {
+            params.dirty |= ImGui::SliderFloat("Camera Speed", &camera_speed, 0.01f, 1.0f);
+            params.dirty |= ImGui::DragFloat("Eye X", &camera_eye.x);
+            params.dirty |= ImGui::DragFloat("Eye Y", &camera_eye.y);
+            params.dirty |= ImGui::DragFloat("Eye Z", &camera_eye.z);
+            cam.set_eye(camera_eye);
+        }
         params.dirty |= ImGui::SliderFloat("T Factor", &params.tfactor, 0.0, 1.0);
         params.dirty |= ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
         params.dirty |= ImGui::SliderFloat("Aperture", &aperture, 0.0f, 1.0f);
-        params.dirty |= ImGui::SliderFloat("Focal length", &fod, 0.2f, 10.0f);
+        params.dirty |= ImGui::DragFloat("Focal length", &fod);
         params.dirty |= ImGui::SliderInt("SPF", &spf, 0, 10);
         params.samples_per_frame = static_cast<unsigned int>(pow(2, spf));
         ImGui::Text("Samples per Frame: %d", params.samples_per_frame);
@@ -217,6 +228,7 @@ void TracerWindow::update_camera() noexcept
     cam.set_fd(fod);
     cam.set_ortho(orhto);
     cam.set_aperture(aperture);
+    cam.set_speed(camera_speed);
     cam.compute_uvw();
     cam.update_device_ptr(params.camera);
 };
@@ -228,4 +240,3 @@ void initGL()
     GL_CHECK(glClearColor(0.212f, 0.271f, 0.31f, 1.0f));
     GL_CHECK(glClear(GL_COLOR_BUFFER_BIT));
 }
-

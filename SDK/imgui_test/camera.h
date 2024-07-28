@@ -7,16 +7,21 @@
 #include <cuda_runtime.h>
 #include <sutil/vec_math.h>
 #include <vector_types.h>
+#include "device_object.h"
 
 /**
  * @class Camera
  * @brief Camera class. Calculates primary rays to shoot into the scene.
  *
  */
-class Camera
+class Camera: public DeviceObject<Camera>
 {
   public:
     __host__ void set_lookat(float3 new_lookat) { m_lookat = new_lookat; }
+
+    __host__ void set_up(float3 up) {
+        m_up = up;
+    }
 
     __host__ void set_eye(float3 new_eye) { m_eye = new_eye; }
 
@@ -50,8 +55,18 @@ class Camera
      */
     __host__ void set_ortho(bool new_ortho) { m_ortho = new_ortho; }
 
-    __host__ void move_forward() { m_eye += w * m_speed; }
-    __host__ void move_backward() { m_eye -= w * m_speed; }
+    __host__ void set_speed(float new_speed) { m_speed = new_speed; }
+
+    __host__ void move_forward()
+    {
+        m_eye += w * m_speed;
+        m_lookat += w * m_speed;
+    }
+    __host__ void move_backward()
+    {
+        m_eye -= w * m_speed;
+        m_lookat -= w * m_speed;
+    }
     __host__ void move_left()
     {
         m_eye -= u * m_speed;
@@ -77,31 +92,6 @@ class Camera
     __host__ void turn_right() { m_lookat += u * m_speed; }
     __host__ void turn_left() { m_lookat -= u * m_speed; }
 
-    /**
-     * @brief Allocates Camera on device memory and returns the pointer to it
-     *
-     * @return
-     */
-    __host__ [[nodiscard]] Camera *new_device_ptr() const
-    {
-        Camera *ptr = nullptr;
-        cudaMalloc(&ptr, sizeof(Camera));
-        cudaMemcpy(ptr, this, sizeof(Camera), cudaMemcpyHostToDevice);
-
-        return ptr;
-    }
-
-    /**
-     * @brief Updates the device side camera object.
-     * Must be called whenever the camera changes behaviour / position.
-     *
-     * @param ptr The device ptr
-     * @return
-     */
-    __host__ void update_device_ptr(Camera *ptr) const
-    {
-        cudaMemcpy(ptr, this, sizeof(Camera), cudaMemcpyHostToDevice);
-    }
 
     /**
      * @brief Computes ortho basis (not orthonormal, w carries info about focal distance)

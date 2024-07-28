@@ -57,6 +57,7 @@ std::tuple<std::vector<float3>, std::vector<float3>> load_assimp(const std::stri
         }
     }
 
+    /*
     vertices.reserve(vertices.size() * 4);
     // duplicate mesh triangles (TODO: replace this with instancing)
     size_t nvertices = vertices.size();
@@ -70,6 +71,7 @@ std::tuple<std::vector<float3>, std::vector<float3>> load_assimp(const std::stri
                 vertices.push_back(new_vert);
             }
         }
+        */
 
     // add tesselated floor
 
@@ -105,7 +107,7 @@ TriangleGAS::TriangleGAS(const Device &device, const std::string &filename)
         accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
         // Triangle build input: simple list of three vertices
-        const auto [vertices, normals] = load_assimp("C:/Users/andiw/3D Objects/bunny/reconstruction/bun_zipper.ply");
+        const auto [vertices, normals] = load_assimp(filename);
         m_vertices = vertices;
         m_normals = normals;
 

@@ -29,14 +29,15 @@
 //
 //
 #include "camera.h"
-#include "cuda.h"
+#include "directional_light.h"
+#include "point_light.h"
 #include "cuda_runtime.h"
 #include "cuda_runtime_api.h"
-#include "driver_types.h"
 #include "optix_types.h"
 #include "vector_types.h"
+#include "device_object.h"
 
-struct Params
+struct Params: public DeviceObject<Params>
 {
     // settings
     unsigned int image_width = 400;
@@ -59,19 +60,14 @@ struct Params
     // geometry data
     float3* normals = nullptr;
     float3* vertices = nullptr;
+    PointLight* light = nullptr;
 
-    __host__ static void cleanup(Params& params) {
-        cudaFree(params.film);
-        cudaFree(params.camera);
-        cudaFree(params.normals);
-    }
+    __host__ void cleanup() const {
+        cudaFree(film);
+        cudaFree(normals);
 
-    __host__ CUdeviceptr to_device() const {
-        CUdeviceptr ptr;
-        cudaMalloc(reinterpret_cast<void**>(&ptr), sizeof(Params));
-        cudaMemcpy(reinterpret_cast<void*>(ptr), this, sizeof(Params), cudaMemcpyHostToDevice);
-
-        return ptr;
+        cudaFree(camera);
+        cudaFree(light);
     }
 
     __host__ void alloc_film() {

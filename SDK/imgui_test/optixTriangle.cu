@@ -30,6 +30,7 @@
 #include <optix.h>
 
 #include "camera.h"
+#include "directional_light.h"
 #include "internal/optix_micromap_impl.h"
 #include "optixTriangle.h"
 #include "optix_device.h"
@@ -187,25 +188,27 @@ extern "C" __global__ void __closesthit__ch()
     const float ndotwi = dot(normal, light_dir);
 
     float3 result = { 0.0f, 0.0f, 0.0f };
-    const float3 shadow_color = { 0.0f, 0.0f, 0.0f };
-    const float3 light_color = { 0.25f, 0.2f, 0.15f };
+    const float3 shadow_color = { 0.0f, 0.0f, 0.1f };
     const float3 ambient_color = { 0.1f, 0.1f, 0.15f };
+    const float3 light_color = { 0.15f, 0.1f, 0.15f };
 
 
+    const float3 light_wi = params.light->wi(P);
     optixTraverse(params.handle,
         P,
-        light_dir,
-        0.01,
-        1e16f,
-        0.0f,// rayTime
+        light_wi,
+        0.01f,
+        1.0f,
+        0.0f,
         OptixVisibilityMask(1),
-        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-        0,// SBT offset
-        1,// SBT stride
-        0// missSBTIndex
-    );
+        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_CULL_DISABLED_ANYHIT,
+        0,
+        1,
+        0);
 
-    result += (optixHitObjectIsHit() || ndotwi < 0.0f) ? shadow_color : light_color * ndotwi;
+
+    // result += light_color * abs(ndotwi);
+    result += (optixHitObjectIsHit() || ndotwi < 0.0f) ? shadow_color : params.light->lumi() * ndotwi;
 
     Onb onb(normal);
 

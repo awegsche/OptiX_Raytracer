@@ -12,12 +12,11 @@
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <optix_stubs.h>
-#include <utility>
 
 #include "camera.h"
 #include "device.h"
 #include "optixTriangle.h"
-#include "optix_types.h"
+//#include "optix_types.h"
 #include "sutil/CUDAOutputBuffer.h"
 #include "sutil/sutil.h"
 #include "triangle_gas.h"
@@ -193,6 +192,8 @@ class TracerWindow
     float fov = 45.0f;
     float fod = 2.0f;
     int spf = 8;
+    float camera_speed = 0.05f;
+    float3 camera_eye = {1.0, 1.0, -10.0};
     float aperture = 0.0f;
     bool orhto = false;
     GLFWwindow *window = nullptr;
