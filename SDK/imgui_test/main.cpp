@@ -1,7 +1,5 @@
-#include <cmath>
 #include <fmt/core.h>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 
 #include <sampleConfig.h>
