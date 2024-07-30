@@ -31,6 +31,7 @@
 #include "camera.h"
 #include "directional_light.h"
 #include "point_light.h"
+#include "volumetric_light.h"
 #include "cuda_runtime.h"
 #include "cuda_runtime_api.h"
 #include "optix_types.h"
@@ -60,7 +61,7 @@ struct Params: public DeviceObject<Params>
     // geometry data
     float3* normals = nullptr;
     float3* vertices = nullptr;
-    PointLight* light = nullptr;
+    VolumetricLight* light = nullptr;
 
     __host__ void cleanup() const {
         cudaFree(film);

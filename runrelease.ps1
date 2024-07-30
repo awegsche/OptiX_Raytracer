@@ -4,3 +4,4 @@ cmake --build --preset msvc-def --config Release --target imgui_test && `
         -m "C:/Users/andiw/3D Objects/bunny/reconstruction/bun_zipper.ply" `
         -w
 cd ..
+        #-m "C:/Users/andiw/3D Objects/source/plaza01/plaza01_night.FBX" `

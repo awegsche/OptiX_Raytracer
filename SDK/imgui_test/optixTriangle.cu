@@ -34,6 +34,7 @@
 #include "internal/optix_micromap_impl.h"
 #include "optixTriangle.h"
 #include "optix_device.h"
+#include "volumetric_light.h"
 #include <cuda/helpers.h>
 #include <cuda/random.h>
 
@@ -46,10 +47,10 @@ __constant__ Params params;
 static __forceinline__ __device__ void cosine_sample_hemisphere(const float u1, const float u2, float3 &p)
 {
     // Uniformly sample disk.
-    const float r = sqrtf(u1);
+    const float r   = sqrtf(u1);
     const float phi = 2.0f * M_PIf * u2;
-    p.x = r * cosf(phi);
-    p.y = r * sinf(phi);
+    p.x             = r * cosf(phi);
+    p.y             = r * sinf(phi);
 
     // Project up to hemisphere.
     p.z = sqrtf(fmaxf(0.0f, 1.0f - p.x * p.x - p.y * p.y));
@@ -72,7 +73,7 @@ struct Onb
         }
 
         m_binormal = normalize(m_binormal);
-        m_tangent = cross(m_binormal, m_normal);
+        m_tangent  = cross(m_binormal, m_normal);
     }
 
     __forceinline__ __device__ void inverse_transform(float3 &p) const
@@ -105,9 +106,9 @@ extern "C" __global__ void __raygen__rg()
     // computeRay(params.camera, idx, dim, ray_origin, ray_direction);
 
     // Trace the ray against our scene hierarchy
-    unsigned int p0, p1, p2;
-    const unsigned int index = idx.y * params.image_width + idx.x;
-    float3 result = { 0.0, 0.0, 0.0 };
+    unsigned int       p0, p1, p2;
+    const unsigned int index  = idx.y * params.image_width + idx.x;
+    float3             result = { 0.0, 0.0, 0.0 };
 
     unsigned int seed = tea<4>(idx.x + dim.x * idx.y, params.dt);
 
@@ -177,23 +178,16 @@ extern "C" __global__ void __closesthit__ch()
 
     const float3 P = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection() + normal * 0.0001f;
 
-    const uint3 idx = optixGetLaunchIndex();
-    const uint3 dim = optixGetLaunchDimensions();
+    const uint3  idx  = optixGetLaunchIndex();
+    const uint3  dim  = optixGetLaunchDimensions();
     unsigned int seed = tea<4>(idx.x + dim.x * idx.y, params.dt);
 
-    // jittered light dir
-    float3 light_dir = { 0.71f + rnd(seed) * 0.01f, 0.51f + rnd(seed) * 0.01f, 0.0f + rnd(seed) * 0.01f };
-    light_dir = normalize(light_dir);
+    float3       result        = { 0.0f, 0.0f, 0.0f };
+    const float3 shadow_color  = { 0.02f, 0.02f, 0.025f };
+    const float3 ambient_color = { 0.1f, 0.1f, 0.105f };
 
-    const float ndotwi = dot(normal, light_dir);
-
-    float3 result = { 0.0f, 0.0f, 0.0f };
-    const float3 shadow_color = { 0.0f, 0.0f, 0.1f };
-    const float3 ambient_color = { 0.1f, 0.1f, 0.15f };
-    const float3 light_color = { 0.15f, 0.1f, 0.15f };
-
-
-    const float3 light_wi = params.light->wi(P);
+    const float3 light_wi = params.light->wi(P, seed);
+    const float  ndotwi   = dot(normal, light_wi);
     optixTraverse(params.handle,
         P,
         light_wi,
@@ -214,7 +208,7 @@ extern "C" __global__ void __closesthit__ch()
 
     const float u1 = rnd(seed);
     const float u2 = rnd(seed);
-    float3 out;
+    float3      out;
     cosine_sample_hemisphere(u1, u2, out);
 
     onb.inverse_transform(out);

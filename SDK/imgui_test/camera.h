@@ -2,26 +2,24 @@
 #define __CAMERA_H__
 
 #include "cuda_runtime_api.h"
+#include "device_object.h"
 #include <cuda.h>
 #include <cuda/random.h>
 #include <cuda_runtime.h>
 #include <sutil/vec_math.h>
 #include <vector_types.h>
-#include "device_object.h"
 
 /**
  * @class Camera
  * @brief Camera class. Calculates primary rays to shoot into the scene.
  *
  */
-class Camera: public DeviceObject<Camera>
+class Camera : public DeviceObject<Camera>
 {
   public:
     __host__ void set_lookat(float3 new_lookat) { m_lookat = new_lookat; }
 
-    __host__ void set_up(float3 up) {
-        m_up = up;
-    }
+    __host__ void set_up(float3 up) { m_up = up; }
 
     __host__ void set_eye(float3 new_eye) { m_eye = new_eye; }
 
@@ -48,7 +46,9 @@ class Camera: public DeviceObject<Camera>
     __host__ void set_aperture(float new_aperture) { m_aperture = new_aperture; }
 
     /**
-     * @brief Sets / Unsets orthographic projection
+     * @brief Sets / Unsets orthographic projection.
+     *
+     * TODO: fix focal distance for orthographic projection.
      *
      * @param new_ortho
      * @return
@@ -59,13 +59,15 @@ class Camera: public DeviceObject<Camera>
 
     __host__ void move_forward()
     {
-        m_eye += w * m_speed;
-        m_lookat += w * m_speed;
+        const float speed = scale_speed();
+        m_eye += w * speed;
+        m_lookat += w * speed;
     }
     __host__ void move_backward()
     {
-        m_eye -= w * m_speed;
-        m_lookat -= w * m_speed;
+        const float speed = scale_speed();
+        m_eye -= w * speed;
+        m_lookat -= w * speed;
     }
     __host__ void move_left()
     {
@@ -132,25 +134,32 @@ class Camera: public DeviceObject<Camera>
 
         if (m_ortho) {
             direction = normalize(d.x * u + d.y * v + w);
-            origin = m_eye + d.x * u + d.y * v;
+            origin    = m_eye + d.x * u + d.y * v;
         } else {
             const float2 dx = make_float2((rnd(seed) - 0.5f) * m_aperture, (rnd(seed) - 0.5f) * m_aperture);
-            d = d - dx;
-            direction = normalize(d.x * u + d.y * v + w);
-            origin = m_eye + dx.x * u + dx.y * v;
+            d               = d - dx;
+            direction       = normalize(d.x * u + d.y * v + w);
+            origin          = m_eye + dx.x * u + dx.y * v;
         }
     }
 
   private:
+    /**
+     * @brief Returns a rescaled speed relative to w (which is not normalized).
+     *
+     * @return
+     */
+    __host__ [[nodiscard]] float scale_speed() const { return m_speed / length(w); }
+
     // position and orientation
-    float3 m_eye = { 0.0, 1.0, -2.0 };
+    float3 m_eye    = { 0.0, 1.0, -2.0 };
     float3 m_lookat = { 0.0, 0.0, 0.0 };
-    float3 m_up = { 0.0, 1.0, 0.000073 };// avoid straight up for singularities
+    float3 m_up     = { 0.0, 1.0, 0.000073 };// avoid straight up for singularities
                                          //
     // camera settings
-    bool m_ortho = false;
-    float m_fov = 45.0f;
-    float m_fd = 1.0f;
+    bool  m_ortho    = false;
+    float m_fov      = 45.0f;
+    float m_fd       = 1.0f;
     float m_aperture = 0.0f;
 
     // movement
