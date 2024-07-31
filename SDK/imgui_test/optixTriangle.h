@@ -30,6 +30,8 @@
 //
 #include "camera.h"
 #include "directional_light.h"
+#include "driver_types.h"
+#include "imgui_test/light.h"
 #include "point_light.h"
 #include "volumetric_light.h"
 #include "cuda_runtime.h"
@@ -37,6 +39,7 @@
 #include "optix_types.h"
 #include "vector_types.h"
 #include "device_object.h"
+#include <vector>
 
 struct Params: public DeviceObject<Params>
 {
@@ -61,14 +64,21 @@ struct Params: public DeviceObject<Params>
     // geometry data
     float3* normals = nullptr;
     float3* vertices = nullptr;
-    VolumetricLight* light = nullptr;
+    LightVariant* lights = nullptr;
+    int nlights =0;
+
+    __host__ void set_lights(std::vector<LightVariant> const& _lights) {
+        nlights = _lights.size();
+        cudaMalloc(&lights, sizeof(LightVariant) * nlights);
+        cudaMemcpy(lights, _lights.data(), sizeof(LightVariant) * nlights, cudaMemcpyHostToDevice);
+    }
 
     __host__ void cleanup() const {
         cudaFree(film);
         cudaFree(normals);
 
         cudaFree(camera);
-        cudaFree(light);
+        cudaFree(lights);
     }
 
     __host__ void alloc_film() {

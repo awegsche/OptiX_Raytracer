@@ -30,11 +30,8 @@
 #include <optix.h>
 
 #include "camera.h"
-#include "directional_light.h"
-#include "internal/optix_micromap_impl.h"
 #include "optixTriangle.h"
 #include "optix_device.h"
-#include "volumetric_light.h"
 #include <cuda/helpers.h>
 #include <cuda/random.h>
 
@@ -184,25 +181,27 @@ extern "C" __global__ void __closesthit__ch()
 
     float3       result        = { 0.0f, 0.0f, 0.0f };
     const float3 shadow_color  = { 0.02f, 0.02f, 0.025f };
-    const float3 ambient_color = { 0.1f, 0.1f, 0.105f };
+    const float3 ambient_color = { 0.05f, 0.05f, 0.055f };
 
-    const float3 light_wi = params.light->wi(P, seed);
-    const float  ndotwi   = dot(normal, light_wi);
-    optixTraverse(params.handle,
-        P,
-        light_wi,
-        0.01f,
-        1.0f,
-        0.0f,
-        OptixVisibilityMask(1),
-        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_CULL_DISABLED_ANYHIT,
-        0,
-        1,
-        0);
+    for (int li = 0; li < params.nlights; ++li) {
+        const float3 light_wi = params.lights[li].wi(P, seed);
+        const float  ndotwi   = dot(normal, light_wi);
+        optixTraverse(params.handle,
+            P,
+            light_wi,
+            0.01f,
+            1.0f,
+            0.0f,
+            OptixVisibilityMask(1),
+            OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_CULL_DISABLED_ANYHIT,
+            0,
+            1,
+            0);
 
 
-    // result += light_color * abs(ndotwi);
-    result += (optixHitObjectIsHit() || ndotwi < 0.0f) ? shadow_color : params.light->lumi() * ndotwi;
+        // result += light_color * abs(ndotwi);
+        result += (optixHitObjectIsHit() || ndotwi < 0.0f) ? shadow_color : params.lights[li].lumi() * ndotwi;
+    }
 
     Onb onb(normal);
 

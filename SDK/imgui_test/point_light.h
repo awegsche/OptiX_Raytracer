@@ -4,15 +4,16 @@
 
 #include "cuda_runtime_api.h"
 #include "device_object.h"
-#include "light.h"
 #include <sutil/vec_math.h>
 #include <vector_types.h>
 
-class PointLight
-    : public DeviceObject<PointLight>
-    //, public Light
+class PointLight : public DeviceObject<PointLight>
+//, public Light
 {
   public:
+    __host__ PointLight() = default;
+    __host__ PointLight(float3 const &position, float3 const &lumi) : m_position(position), m_lumi(lumi) {}
+
     __host__ void set_position(float3 const &position) { m_position = position; }
     __host__ void set_lumi(float3 const &lumi) { m_lumi = lumi; }
 

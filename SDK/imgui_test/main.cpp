@@ -242,14 +242,17 @@ int main(int argc, char *argv[])
         cam.set_fov(45.0);
         cam.compute_uvw();
 
-        VolumetricLight light;
-        light.set_position({ 0.0, 0.5, 0.2 });
-        light.set_lumi({ 0.7, 0.6, 0.3 });
-        light.set_radius(0.1f);
+        std::vector<LightVariant> lights;
+        lights.push_back(VolumetricLight({0.0f, 2.0f, 0.0f}, 0.1f, {0.2f, 0.16f, 0.15f}));
+        lights.push_back(DirectionalLight({1.0f, 1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}));
+
+        const auto lumi = lights[0].lumi();
+        spdlog::info("light 1");
+        spdlog::info("{} {} {}", lumi.x, lumi.y, lumi.z);
 
         Params params;
         params.camera   = cam.new_device_ptr();
-        params.light    = light.new_device_ptr();
+        params.set_lights(lights);
         params.vertices = triangles.get_device_vertices();
         params.handle   = triangles.get_gas_handle();
         // params.normals = triangles.get_device_normals();
