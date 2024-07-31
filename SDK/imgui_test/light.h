@@ -22,7 +22,7 @@ class LightVariant
         case Tag::Point:
             return _payload.p.wi(p, seed);
         case Tag::Directional:
-            return _payload.d.wi(p);
+            return _payload.d.wi(p, seed);
         case Tag::Volumetric:
             return _payload.v.wi(p, seed);
         }

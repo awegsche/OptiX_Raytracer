@@ -244,7 +244,7 @@ int main(int argc, char *argv[])
 
         std::vector<LightVariant> lights;
         lights.push_back(VolumetricLight({0.0f, 2.0f, 0.0f}, 0.1f, {0.2f, 0.16f, 0.15f}));
-        lights.push_back(DirectionalLight({1.0f, 1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}));
+        lights.push_back(DirectionalLight({1.0f, 1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}, 0.05f));
 
         const auto lumi = lights[0].lumi();
         spdlog::info("light 1");
