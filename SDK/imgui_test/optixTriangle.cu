@@ -166,7 +166,8 @@ extern "C" __global__ void __closesthit__ch()
     // TODO: lookup diffuse shading in PBRT / RTFTGU and implement it here.
 
     // calc normal
-    unsigned int vertoffset = optixGetPrimitiveIndex() * 3;
+    unsigned int vertidx    = optixGetPrimitiveIndex();
+    unsigned int vertoffset = vertidx * 3;
 
     float3 v0 = params.vertices[vertoffset + 1] - params.vertices[vertoffset];
     float3 v1 = params.vertices[vertoffset + 2] - params.vertices[vertoffset];
@@ -180,8 +181,12 @@ extern "C" __global__ void __closesthit__ch()
     unsigned int seed = tea<4>(idx.x + dim.x * idx.y, params.dt);
 
     float3       result        = { 0.0f, 0.0f, 0.0f };
-    const float3 shadow_color  = { 0.02f, 0.02f, 0.025f };
+    const float3 shadow_color  = { 0.0f, 0.0f, 0.0f };
     const float3 ambient_color = { 0.05f, 0.05f, 0.055f };
+
+
+    // get material
+    DiffuseMaterial const &mat = params.materials[params.mat_indices[vertidx]];
 
     for (int li = 0; li < params.nlights; ++li) {
         const float3 light_wi = params.lights[li].wi(P, seed);
@@ -200,7 +205,9 @@ extern "C" __global__ void __closesthit__ch()
 
 
         // result += light_color * abs(ndotwi);
-        result += (optixHitObjectIsHit() || ndotwi < 0.0f) ? shadow_color : params.lights[li].lumi() * ndotwi;
+        result += (optixHitObjectIsHit() || ndotwi < 0.0f)
+                      ? shadow_color
+                      : mat.f(P, light_wi, light_wi, seed) * params.lights[li].lumi() * ndotwi;
     }
 
     Onb onb(normal);
@@ -226,6 +233,6 @@ extern "C" __global__ void __closesthit__ch()
         0// missSBTIndex
     );
 
-    result += optixHitObjectIsHit() ? shadow_color : ambient_color;
+    result += optixHitObjectIsHit() ? shadow_color : ambient_color * mat.f(P, out, out, seed);
     setPayload(result);
 }

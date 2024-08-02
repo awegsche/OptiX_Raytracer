@@ -243,26 +243,32 @@ int main(int argc, char *argv[])
         cam.compute_uvw();
 
         std::vector<LightVariant> lights;
-        lights.push_back(VolumetricLight({0.0f, 2.0f, 0.0f}, 0.1f, {0.2f, 0.16f, 0.15f}));
-        lights.push_back(DirectionalLight({1.0f, 1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}, 0.05f));
+        lights.emplace_back(VolumetricLight({ 0.0f, 2.0f, 0.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
+        lights.emplace_back(VolumetricLight({ 2.0f, 2.0f, 0.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
+        lights.emplace_back(VolumetricLight({ 2.0f, 2.0f, 2.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
+        lights.emplace_back(DirectionalLight({ -1.0f, 1.0f, -1.0f }, { 0.1f, 0.1f, 0.1f }, 0.05f));
 
-        const auto lumi = lights[0].lumi();
-        spdlog::info("light 1");
-        spdlog::info("{} {} {}", lumi.x, lumi.y, lumi.z);
+        std::vector<DiffuseMaterial> mats;
+
+        for (int i = 0; i < 5; ++i) {
+            for (int j = 0; j < 5; ++j) {
+                mats.push_back(DiffuseMaterial({ static_cast<float>(i) / 5.0f, static_cast<float>(j) / 5.0f, 0.2f }));
+            }
+        }
+        mats.push_back(DiffuseMaterial({ 0.5, 0.5, 0.5 }));
+        mats.push_back(DiffuseMaterial({ 0.5, 0.5, 0.5 }));
 
         Params params;
         params.camera   = cam.new_device_ptr();
-        params.set_lights(lights);
         params.vertices = triangles.get_device_vertices();
         params.handle   = triangles.get_gas_handle();
+        params.set_lights(lights);
+        params.set_materials(mats);
+        params.set_mat_indices(triangles.get_mat_indices());
+
         // params.normals = triangles.get_device_normals();
         params.tfactor = 0.5f;
         params.dt      = 0;
-
-        /*
-        sutil::CUDAOutputBuffer<uchar4> output_buffer(sutil::CUDAOutputBufferType::CUDA_DEVICE, buf_width, buf_height);
-        CUDA_CHECK(cudaMalloc(&params.film, sizeof(float3) * buf_width * buf_height));
-        */
 
         if (gui) {
             TracerWindow window{ stream, pipeline, sbt, params };
