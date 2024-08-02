@@ -72,7 +72,7 @@ std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_assi
                 new_vert.z += 0.25f * y;
                 vertices.push_back(new_vert);
             }
-            for (size_t v = 0; v < nvertices / 3; ++v) { mat_indices.push_back((y + 2) * 3 + x + 1); }
+            for (size_t v = 0; v < nvertices / 3; ++v) { mat_indices.push_back((y + 2) * 5 + x + 3); }
         }
 
     // add tesselated floor
