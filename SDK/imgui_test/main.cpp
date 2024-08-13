@@ -250,6 +250,8 @@ int main(int argc, char *argv[])
 
         std::vector<DiffuseMaterial> mats;
 
+        mats.push_back(DiffuseMaterial({ 0.5, 0.5, 0.5 }));
+
         for (int i = 0; i < 5; ++i) {
             for (int j = 0; j < 5; ++j) {
                 mats.push_back(DiffuseMaterial({ static_cast<float>(i) / 5.0f, static_cast<float>(j) / 5.0f, 0.2f }));
@@ -266,7 +268,7 @@ int main(int argc, char *argv[])
         params.set_materials(mats);
         params.set_mat_indices(triangles.get_mat_indices());
 
-        // params.normals = triangles.get_device_normals();
+        params.normals = triangles.get_device_normals();
         params.tfactor = 0.5f;
         params.dt      = 0;
 

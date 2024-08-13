@@ -30,6 +30,7 @@ class TriangleGAS
 
     [[nodiscard]] float3 *get_device_normals() const noexcept
     {
+        spdlog::info("copy {} normals to device", m_normals.size());
         float3 *ptr = nullptr;
         cudaMalloc(reinterpret_cast<void **>(&ptr), sizeof(float3) * m_normals.size());
         cudaMemcpy(reinterpret_cast<void *>(ptr),

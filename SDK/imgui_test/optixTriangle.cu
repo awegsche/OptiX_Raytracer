@@ -169,10 +169,17 @@ extern "C" __global__ void __closesthit__ch()
     unsigned int vertidx    = optixGetPrimitiveIndex();
     unsigned int vertoffset = vertidx * 3;
 
+    /*
     float3 v0 = params.vertices[vertoffset + 1] - params.vertices[vertoffset];
     float3 v1 = params.vertices[vertoffset + 2] - params.vertices[vertoffset];
 
-    float3 normal = normalize(cross(v0, v1));
+    const float3 normal = normalize(cross(v0, v1));
+    */
+    const float2 barycentrics = optixGetTriangleBarycentrics();
+
+    const float3 normal = barycentrics.x * params.normals[vertoffset + 1]
+        + barycentrics.y * params.normals[vertoffset + 2]
+        + (1.0f - barycentrics.x - barycentrics.y) * params.normals[vertoffset];
 
     const float3 P = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection() + normal * 0.0001f;
 

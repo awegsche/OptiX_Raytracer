@@ -20,7 +20,8 @@ std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_assi
 
     spdlog::info("loading bunny");
     const aiScene *scene = importer.ReadFile(filename,
-        aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
+        aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals);
+        //aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
 
     spdlog::info("loading finished");
 
@@ -62,17 +63,19 @@ std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_assi
 
     vertices.reserve(vertices.size() * 4);
     // duplicate mesh triangles (TODO: replace this with instancing)
-    size_t nvertices = vertices.size();
-    for (int x = -2; x < 3; ++x)
-        for (int y = -2; y < 3; ++y) {
-            if (x == 0 && y == 0) continue;
+    const int MROWS     = 0;
+    const int MCOLS     = 0;
+    size_t    nvertices = vertices.size();
+    for (int x = 0; x < MROWS; ++x)
+        for (int y = 0; y < MCOLS; ++y) {
+            if (x == MCOLS/2 && y == MCOLS/2) continue;
             for (size_t v = 0; v < nvertices; ++v) {
                 float3 new_vert = vertices[v];
-                new_vert.x += 0.25f * x;
-                new_vert.z += 0.25f * y;
+                new_vert.x += 0.25f * (x - MCOLS / 2);
+                new_vert.z += 0.25f * (y - MROWS / 2);
                 vertices.push_back(new_vert);
             }
-            for (size_t v = 0; v < nvertices / 3; ++v) { mat_indices.push_back((y + 2) * 5 + x + 3); }
+            for (size_t v = 0; v < nvertices / 3; ++v) { mat_indices.push_back((y)*MROWS + x); }
         }
 
     // add tesselated floor
