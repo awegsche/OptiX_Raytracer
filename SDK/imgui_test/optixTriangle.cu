@@ -27,6 +27,7 @@
 //
 
 // #include <__clang_cuda_runtime_wrapper.h>
+//#include <__clang_cuda_device_functions.h>
 #include <optix.h>
 
 #include "camera.h"
@@ -90,6 +91,15 @@ static __forceinline__ __device__ void setPayload(float3 p)
     optixSetPayload_2(__float_as_uint(p.z));
 }
 
+static __forceinline__ __device__ float3 getPayload()
+{
+    float3 result;
+    result.x = __uint_as_float(optixGetPayload_0());
+    result.y = __uint_as_float(optixGetPayload_1());
+    result.z = __uint_as_float(optixGetPayload_2());
+    return result;
+}
+
 extern "C" __global__ void __raygen__rg()
 {
     // Lookup our location within the launch grid
@@ -144,17 +154,20 @@ extern "C" __global__ void __miss__ms()
 {
     const uint3 idx = optixGetLaunchIndex();
     const uint3 dim = optixGetLaunchDimensions();
+
     // MissData* miss_data  = reinterpret_cast<MissData*>( optixGetSbtDataPointer() );
+    /*
     float3 result;
     result.x = static_cast<float>(idx.x) / static_cast<float>(dim.x);
     result.y = static_cast<float>(idx.y) / static_cast<float>(dim.y);
     result.z = static_cast<float>(idx.z) / static_cast<float>(dim.z);
+    */
     /*
     unsigned int seed = tea<4>(idx.x + idx.y*dim.x, params.dt);
     const float rand = rnd(seed);
     const float3 result = make_float3(rand, rand, rand);
     */
-    setPayload(result);
+    setPayload(optixGetWorldRayDirection() * 0.5f + make_float3(0.5f));
 }
 
 
@@ -188,8 +201,7 @@ extern "C" __global__ void __closesthit__ch()
     unsigned int seed = tea<4>(idx.x + dim.x * idx.y, params.dt);
 
     float3       result        = { 0.0f, 0.0f, 0.0f };
-    const float3 shadow_color  = { 0.0f, 0.0f, 0.0f };
-    const float3 ambient_color = { 0.05f, 0.05f, 0.055f };
+    float3 shadow_color  = { 0.0f, 0.0f, 0.0f };
 
 
     // get material
@@ -226,6 +238,7 @@ extern "C" __global__ void __closesthit__ch()
 
     onb.inverse_transform(out);
 
+    unsigned int       p0, p1, p2;
     // We are only casting probe rays so no shader invocation is needed
     optixTraverse(params.handle,
         P,
@@ -234,12 +247,22 @@ extern "C" __global__ void __closesthit__ch()
         1e16f,
         0.0f,// rayTime
         OptixVisibilityMask(1),
-        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_ANYHIT,
+        OPTIX_RAY_FLAG_NONE, //OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_ANYHIT,
         0,// SBT offset
         1,// SBT stride
         0// missSBTIndex
+        //,p0,p1,p2
     );
+    /*
+    const float3 ambient_color = make_float3(
+            __uint_as_float(p0),
+            __uint_as_float(p1),
+            __uint_as_float(p2)
+            );
+            */
 
-    result += optixHitObjectIsHit() ? shadow_color : ambient_color * mat.f(P, out, out, seed);
+    //result += ambient_color* 0.5f;
+    const float3 ambient_color = make_float3(0.01f, 0.01f, 0.01f);
+    result += optixHitObjectIsHit() ? ambient_color : ambient_color * mat.f(P, out, out, seed);
     setPayload(result);
 }

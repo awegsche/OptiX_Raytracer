@@ -1,15 +1,78 @@
 #include "triangle_gas.h"
 #include "sutil/Exception.h"
+#include "sutil/vec_math.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
+#include <filesystem>
+#include <nbt.h>
 #include <stdexcept>
 #include <tuple>
 
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
 // #include <optix_function_table_definition.h>
+std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_nbt(const std::string &filename)
+{
+    std::vector<float3> vertices;
+    std::vector<float3> normals;
+    std::vector<int>    mat_indices;
+
+    if (!std::filesystem::exists(filename)) { throw std::runtime_error("can't find file"); }
+
+    const auto root = nbt::read_from_file(filename);
+
+    for (const auto &mesh : root.get<nbt::TAG_Compound>()) {
+        const nbt::compound &mesh_compound = mesh.get<nbt::TAG_Compound>();
+
+        const std::vector<uint8_t> &vertex_data = mesh_compound["vertices"]->get<nbt::TAG_Byte_Array>();
+        const std::vector<uint8_t> &normal_data = mesh_compound["normals"]->get<nbt::TAG_Byte_Array>();
+
+        size_t float3_size = (sizeof(float) * 3);
+        size_t nvertices   = vertex_data.size() / float3_size;
+
+        const auto float3_from_bytes = [](std::vector<uint8_t> const &bytes, std::vector<float3> &float3s, size_t i) {
+            static size_t float3_size = (sizeof(float) * 3);
+            uint32_t      x           = 0;
+            float3        vec;
+
+            x |= bytes[float3_size * i];
+            x |= bytes[float3_size * i + 1] << 8;
+            x |= bytes[float3_size * i + 2] << 16;
+            x |= bytes[float3_size * i + 3] << 24;
+
+            vec.x = *reinterpret_cast<float *>(&x);
+
+            x = 0;
+            x |= bytes[float3_size * i + 4];
+            x |= bytes[float3_size * i + 4 + 1] << 8;
+            x |= bytes[float3_size * i + 4 + 2] << 16;
+            x |= bytes[float3_size * i + 4 + 3] << 24;
+
+            vec.y = *reinterpret_cast<float *>(&x);
+
+            x = 0;
+            x |= bytes[float3_size * i + 8];
+            x |= bytes[float3_size * i + 8 + 1] << 8;
+            x |= bytes[float3_size * i + 8 + 2] << 16;
+            x |= bytes[float3_size * i + 8 + 3] << 24;
+
+            vec.z = *reinterpret_cast<float *>(&x);
+            float3s.push_back(vec);
+        };
+
+        vertices.reserve(vertices.size() + nvertices);
+        normals.reserve(vertices.size() + nvertices);
+        for (size_t i = 0; i < nvertices; ++i) {
+            float3_from_bytes(vertex_data, vertices, i);
+            float3_from_bytes(normal_data, normals, i);
+            mat_indices.push_back(0);
+        }
+    }
+
+    return { vertices, normals, mat_indices };
+}
 
 std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_assimp(const std::string &filename)
 {
@@ -19,9 +82,11 @@ std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_assi
     Assimp::Importer    importer;
 
     spdlog::info("loading bunny");
-    const aiScene *scene = importer.ReadFile(filename,
-        aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals);
-        //aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
+    const aiScene *scene = importer.ReadFile(filename, 0
+        //,aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_GenNormals);
+        // aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
+        // aiProcess_SortByPType);
+    );
 
     spdlog::info("loading finished");
 
@@ -68,7 +133,7 @@ std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_assi
     size_t    nvertices = vertices.size();
     for (int x = 0; x < MROWS; ++x)
         for (int y = 0; y < MCOLS; ++y) {
-            if (x == MCOLS/2 && y == MCOLS/2) continue;
+            if (x == MCOLS / 2 && y == MCOLS / 2) continue;
             for (size_t v = 0; v < nvertices; ++v) {
                 float3 new_vert = vertices[v];
                 new_vert.x += 0.25f * (x - MCOLS / 2);
@@ -115,7 +180,8 @@ TriangleGAS::TriangleGAS(const Device &device, const std::string &filename)
         accel_options.operation              = OPTIX_BUILD_OPERATION_BUILD;
 
         // Triangle build input: simple list of three vertices
-        const auto [vertices, normals, mat_indices] = load_assimp(filename);
+        // const auto [vertices, normals, mat_indices] = load_assimp(filename);
+        const auto [vertices, normals, mat_indices] = load_nbt(filename);
         m_vertices                                  = vertices;
         m_normals                                   = normals;
         m_mat_indices                               = mat_indices;

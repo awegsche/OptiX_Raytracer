@@ -45,4 +45,5 @@ target_link_libraries( ${target_name}
   spdlog::spdlog
   assimp::assimp
   CLI11::CLI11
+  nbtlib
   )

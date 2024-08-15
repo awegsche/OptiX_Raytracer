@@ -73,4 +73,6 @@ class TriangleGAS
 
 std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_assimp(const std::string &filename);
 
+std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_nbt(const std::string &filename);
+
 #endif
