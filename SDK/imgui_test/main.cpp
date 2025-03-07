@@ -21,18 +21,13 @@
 #include <spdlog/spdlog.h>
 
 #include "device.h"
+#include "instance.h"
 #include "make_geometry.h"
 #include "optixTriangle.h"
 #include "tracer_window.h"
 #include "triangle_gas.h"
 #include "volumetric_light.h"
 
-
-template<typename T> struct SbtRecord
-{
-    __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
-    T data;
-};
 
 using RayGenSbtRecord   = SbtRecord<RayGenData>;
 using MissSbtRecord     = SbtRecord<MissData>;
@@ -65,10 +60,30 @@ int main(int argc, char *argv[])
 
         spdlog::warn("model file: {}", modelfile);
         TriangleGAS triangles(device, modelfile);
+
+        std::vector<TransformFloats> transforms;
+
+        for (int dx = 0; dx < 1; ++dx) {
+            for (int dy = 0; dy < 1; ++dy) {
+                Transform t = Transform::translated((float)dx, 0.0, (float)dy);
+                          //    * Transform::rotated_y(M_PI)
+                //*Transform::rotated_x(-M_PI_2);
+
+                std::cout << t;
+                //t = Transform::identity();
+
+                transforms.push_back(t.m_matrix);
+            }
+        }
+
+        transforms.push_back((Transform::translated(1.0, 0, 0) * Transform::rotated_y(M_PI) * Transform::rotated_x(-M_PI_2)).m_matrix);
+        transforms.push_back((Transform::translated(2.0, 0, 0) ).m_matrix);
+
+        InstanceGAS instances = InstanceGAS::from_trafos(device, triangles.get_gas_handle(), transforms);
         //
         spdlog::info("Create module");
         //
-        OptixModule                 module                   = nullptr;
+        OptixModule                 optix_module             = nullptr;
         OptixPipelineCompileOptions pipeline_compile_options = {};
         {
             OptixModuleCompileOptions module_compile_options = {};
@@ -78,7 +93,7 @@ int main(int argc, char *argv[])
 #endif
 
             pipeline_compile_options.usesMotionBlur                   = false;
-            pipeline_compile_options.traversableGraphFlags            = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+            pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
             pipeline_compile_options.numPayloadValues                 = 3;
             pipeline_compile_options.numAttributeValues               = 3;
             pipeline_compile_options.exceptionFlags                   = OPTIX_EXCEPTION_FLAG_NONE;
@@ -95,7 +110,7 @@ int main(int argc, char *argv[])
                 inputSize,
                 LOG,
                 &LOG_SIZE,
-                &module));
+                &optix_module));
         }
 
 
@@ -110,7 +125,7 @@ int main(int argc, char *argv[])
 
             OptixProgramGroupDesc raygen_prog_group_desc    = {};//
             raygen_prog_group_desc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
-            raygen_prog_group_desc.raygen.module            = module;
+            raygen_prog_group_desc.raygen.module            = optix_module;
             raygen_prog_group_desc.raygen.entryFunctionName = "__raygen__rg";
             OPTIX_CHECK_LOG(optixProgramGroupCreate(device.get_context(),
                 &raygen_prog_group_desc,
@@ -122,7 +137,7 @@ int main(int argc, char *argv[])
 
             OptixProgramGroupDesc miss_prog_group_desc  = {};
             miss_prog_group_desc.kind                   = OPTIX_PROGRAM_GROUP_KIND_MISS;
-            miss_prog_group_desc.miss.module            = module;
+            miss_prog_group_desc.miss.module            = optix_module;
             miss_prog_group_desc.miss.entryFunctionName = "__miss__ms";
             OPTIX_CHECK_LOG(optixProgramGroupCreate(device.get_context(),
                 &miss_prog_group_desc,
@@ -134,7 +149,7 @@ int main(int argc, char *argv[])
 
             OptixProgramGroupDesc hitgroup_prog_group_desc        = {};
             hitgroup_prog_group_desc.kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-            hitgroup_prog_group_desc.hitgroup.moduleCH            = module;
+            hitgroup_prog_group_desc.hitgroup.moduleCH            = optix_module;
             hitgroup_prog_group_desc.hitgroup.entryFunctionNameCH = "__closesthit__ch";
             OPTIX_CHECK_LOG(optixProgramGroupCreate(device.get_context(),
                 &hitgroup_prog_group_desc,
@@ -183,7 +198,7 @@ int main(int argc, char *argv[])
                 direct_callable_stack_size_from_traversal,
                 direct_callable_stack_size_from_state,
                 continuation_stack_size,
-                1// maxTraversableDepth
+                2// maxTraversableDepth
                 ));
         }
 
@@ -220,10 +235,10 @@ int main(int argc, char *argv[])
             sbt.raygenRecord                = raygen_record;
             sbt.missRecordBase              = miss_record;
             sbt.missRecordStrideInBytes     = sizeof(MissSbtRecord);
-            sbt.missRecordCount             = 1;
+            sbt.missRecordCount             = static_cast<uint32_t>(instances.instances_count());
             sbt.hitgroupRecordBase          = hitgroup_record;
             sbt.hitgroupRecordStrideInBytes = sizeof(HitGroupSbtRecord);
-            sbt.hitgroupRecordCount         = 1;
+            sbt.hitgroupRecordCount         = static_cast<uint32_t>(instances.instances_count());
         }
 
 
@@ -243,10 +258,10 @@ int main(int argc, char *argv[])
         cam.compute_uvw();
 
         std::vector<LightVariant> lights;
-        lights.emplace_back(VolumetricLight({ 0.0f, 2.0f, 0.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
-        lights.emplace_back(VolumetricLight({ 2.0f, 2.0f, 0.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
-        lights.emplace_back(VolumetricLight({ 2.0f, 2.0f, 2.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
-        lights.emplace_back(DirectionalLight({ -1.0f, 1.0f, -1.0f }, { 0.1f, 0.1f, 0.1f }, 0.05f));
+        //lights.emplace_back(VolumetricLight({ 0.0f, 2.0f, 0.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
+        //lights.emplace_back(VolumetricLight({ 2.0f, 2.0f, 0.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
+        //lights.emplace_back(VolumetricLight({ 2.0f, 2.0f, 2.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
+        lights.emplace_back(DirectionalLight({ -1.0f, 1.0f, -1.0f }, { 1.1f, 1.1f, 1.1f }, 0.05f));
 
         std::vector<DiffuseMaterial> mats;
 
@@ -263,7 +278,8 @@ int main(int argc, char *argv[])
         Params params;
         params.camera   = cam.new_device_ptr();
         params.vertices = triangles.get_device_vertices();
-        params.handle   = triangles.get_gas_handle();
+        // params.handle   = triangles.get_gas_handle();
+        params.handle = instances.get_handle();
         params.set_lights(lights);
         params.set_materials(mats);
         params.set_mat_indices(triangles.get_mat_indices());
@@ -291,7 +307,7 @@ int main(int argc, char *argv[])
             OPTIX_CHECK(optixProgramGroupDestroy(hitgroup_prog_group));
             OPTIX_CHECK(optixProgramGroupDestroy(miss_prog_group));
             OPTIX_CHECK(optixProgramGroupDestroy(raygen_prog_group));
-            OPTIX_CHECK(optixModuleDestroy(module));
+            OPTIX_CHECK(optixModuleDestroy(optix_module));
 
             OPTIX_CHECK(optixDeviceContextDestroy(device.get_context()));
         }

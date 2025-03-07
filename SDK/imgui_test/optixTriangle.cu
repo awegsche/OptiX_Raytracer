@@ -170,6 +170,34 @@ extern "C" __global__ void __miss__ms()
     setPayload(optixGetWorldRayDirection() * 0.5f + make_float3(0.5f));
 }
 
+// Get the 3x4 object to world transform and its inverse.
+__forceinline__ __device__ void getTransforms(const OptixTraversableHandle handle, float4* mW, float4* mO) 
+{
+  const float4* tW = optixGetInstanceTransformFromHandle(handle);
+  const float4* tO = optixGetInstanceInverseTransformFromHandle(handle);
+
+  mW[0] = tW[0];
+  mW[1] = tW[1];
+  mW[2] = tW[2];
+
+  mO[0] = tO[0];
+  mO[1] = tO[1];
+  mO[2] = tO[2];
+}
+
+// (Matrix3x4^-1)^T * normal. v.w == 0.0f
+// Takes the inverse matrix as input and applies it transposed.
+__forceinline__ __device__ float3 transformNormal(const float4* m, const float3& v)
+{
+  float3 r;
+
+  r.x = m[0].x * v.x + m[1].x * v.y + m[2].x * v.z;
+  r.y = m[0].y * v.x + m[1].y * v.y + m[2].y * v.z;
+  r.z = m[0].z * v.x + m[1].z * v.y + m[2].z * v.z;
+
+  return r;
+}
+
 
 extern "C" __global__ void __closesthit__ch()
 {
@@ -190,9 +218,27 @@ extern "C" __global__ void __closesthit__ch()
     */
     const float2 barycentrics = optixGetTriangleBarycentrics();
 
-    const float3 normal = barycentrics.x * params.normals[vertoffset + 1]
-        + barycentrics.y * params.normals[vertoffset + 2]
-        + (1.0f - barycentrics.x - barycentrics.y) * params.normals[vertoffset];
+
+    //float3 normal0 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset]);
+    //float3 normal1 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset + 1]);
+    //float3 normal2 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset + 2]);
+    //float3 normal0 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset]);
+    //float3 normal1 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset + 1]);
+    //float3 normal2 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset + 2]);
+    const float3 normal0 = params.normals[vertoffset];
+    const float3 normal1 = params.normals[vertoffset + 1];
+    const float3 normal2 = params.normals[vertoffset + 2];
+
+    float3 normal = barycentrics.x * normal1
+        + barycentrics.y * normal2
+        + (1.0f - barycentrics.x - barycentrics.y) * normal0;
+
+    OptixTraversableHandle h = optixGetTransformListHandle(2);
+
+    float4 mW[3];
+    float4 mO[3];
+
+    normal = optixTransformNormalFromObjectToWorldSpace(normal);
 
     const float3 P = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection() + normal * 0.0001f;
 
@@ -202,7 +248,6 @@ extern "C" __global__ void __closesthit__ch()
 
     float3       result        = { 0.0f, 0.0f, 0.0f };
     float3 shadow_color  = { 0.0f, 0.0f, 0.0f };
-
 
     // get material
     DiffuseMaterial const &mat = params.materials[params.mat_indices[vertidx]];

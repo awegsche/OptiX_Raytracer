@@ -19,6 +19,8 @@ std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_nbt(
     std::vector<float3> normals;
     std::vector<int>    mat_indices;
 
+    spdlog::info("loading nbt {}", filename);
+
     if (!std::filesystem::exists(filename)) { throw std::runtime_error("can't find file"); }
 
     const auto root = nbt::read_from_file(filename);
@@ -70,6 +72,30 @@ std::tuple<std::vector<float3>, std::vector<float3>, std::vector<int>> load_nbt(
             mat_indices.push_back(0);
         }
     }
+
+    // add tesselated floor
+    /*
+    float floor = -1.0e-1f;
+
+    for (int i = -10; i < 10; ++i) {
+        for (int j = -10; j < 10; ++j) {
+            vertices.push_back({ (float)i * 0.1f, floor, (float)j * 0.1f });
+            vertices.push_back({ (float)i * 0.1f, floor, (float)(j + 1) * 0.1f });
+            vertices.push_back({ (float)(i + 1) * 0.1f, floor, (float)j * 0.1f });
+
+            vertices.push_back({ (float)(i + 1) * 0.1f, floor, (float)j * 0.1f });
+            vertices.push_back({ (float)i * 0.1f, floor, (float)(j + 1) * 0.1f });
+            vertices.push_back({ (float)(i + 1) * 0.1f, floor, (float)(j + 1) * 0.1f });
+
+            mat_indices.push_back(26);
+            mat_indices.push_back(26);
+
+            for (int n = 0; n < 6; ++n) { normals.push_back({ 0.0, 1.0, 0.0 }); }
+        }
+    }
+
+    */
+
 
     return { vertices, normals, mat_indices };
 }
@@ -171,6 +197,7 @@ TriangleGAS::TriangleGAS(const Device &device, const std::string &filename)
 {
     //
     spdlog::info("accel handling");
+    spdlog::info("debug accel handling");
     //
     {
         // Use default options for simplicity.  In a real use case we would want to
@@ -196,6 +223,7 @@ TriangleGAS::TriangleGAS(const Device &device, const std::string &filename)
 
         const size_t vertices_size = sizeof(float3) * m_vertices.size();
         CUdeviceptr  d_vertices    = 0;
+        spdlog::info("try allocating {} bytes for vertices", vertices_size);
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_vertices), vertices_size));
         CUDA_CHECK(
             cudaMemcpy(reinterpret_cast<void *>(d_vertices), m_vertices.data(), vertices_size, cudaMemcpyHostToDevice));
@@ -216,9 +244,11 @@ TriangleGAS::TriangleGAS(const Device &device, const std::string &filename)
             1,// Number of build inputs
             &m_gas_buffer_sizes));
         CUdeviceptr d_temp_buffer_gas;
+        spdlog::info("preparing buffers");
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&d_temp_buffer_gas), m_gas_buffer_sizes.tempSizeInBytes));
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&m_d_gas_output_buffer), m_gas_buffer_sizes.outputSizeInBytes));
 
+        spdlog::info("creating accel handle");
         OPTIX_CHECK(optixAccelBuild(device.get_context(),
             0,// CUDA stream
             &accel_options,

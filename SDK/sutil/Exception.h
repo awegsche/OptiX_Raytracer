@@ -176,7 +176,8 @@ inline void optixCheckLog( OptixResult  res,
     if( res != OPTIX_SUCCESS )
     {
         std::stringstream ss;
-        ss << "Optix call '" << call << "' failed: " << file << ':' << line << ")\nLog:\n"
+        ss << "Optix call '" << call << "' failed: " << file << ':' << line << ")\nLog ( " << sizeof_log_returned
+           << " chars )" << ":\n "
            << log << ( sizeof_log_returned > sizeof_log ? "<TRUNCATED>" : "" ) << '\n';
         throw Exception( res, ss.str().c_str() );
     }
@@ -216,6 +217,7 @@ inline void cudaSyncCheck( const char* file, unsigned int line )
     if( error != cudaSuccess )
     {
         std::stringstream ss;
+        //const char *errstr = cudaGetErrorString(error);
         ss << "CUDA error on synchronize with error '"
            << cudaGetErrorString( error ) << "' (" << file << ":" << line << ")\n";
         throw Exception( ss.str().c_str() );

@@ -31,7 +31,7 @@ constexpr int WINDOW_HEIGHT = 768;
 #ifdef NDEBUG
 constexpr int DOWNSAMPLING = 1;
 #else
-constexpr int DOWNSAMPLING = 4;
+constexpr int DOWNSAMPLING = 2;
 #endif
 
 

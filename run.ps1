@@ -1,8 +1,14 @@
 cd SDK
-cmake --build --preset msvc-def --config Debug --target imgui_test && `
+cmake --build --preset msvc-def --config Debug --target imgui_test
+
+if ($LastExitCode -ne 0) {
+    Write-Host("compilation failed")
+    exit
+} else {
     ./builds/msvc/bin/Debug/imgui_test.exe `
-        -m "C:/Users/andiw/3D Objects/bunny/reconstruction/bun_zipper.ply" `
+        -m "C:/Users/andiw/cpp/threed/robot.nbt" `
         -o "last_render.png" `
         -w
+}
 
 cd ..

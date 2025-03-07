@@ -1031,6 +1031,7 @@ static std::string sampleInputFilePath( const char* sampleName, const char* file
 static void getInputDataFromFile( std::string& inputData, const char* sample_name, const char* filename )
 {
     const std::string sourceFilePath = sampleInputFilePath( sample_name, filename );
+    std::cout << "sample input filepath: " << sourceFilePath << "\n";
 
     // Try to open source file
     if( !readSourceFile( inputData, sourceFilePath ) )
