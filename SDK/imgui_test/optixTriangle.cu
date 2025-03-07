@@ -218,27 +218,12 @@ extern "C" __global__ void __closesthit__ch()
     */
     const float2 barycentrics = optixGetTriangleBarycentrics();
 
-
-    //float3 normal0 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset]);
-    //float3 normal1 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset + 1]);
-    //float3 normal2 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset + 2]);
-    //float3 normal0 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset]);
-    //float3 normal1 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset + 1]);
-    //float3 normal2 = optixTransformNormalFromObjectToWorldSpace(params.normals[vertoffset + 2]);
     const float3 normal0 = params.normals[vertoffset];
     const float3 normal1 = params.normals[vertoffset + 1];
     const float3 normal2 = params.normals[vertoffset + 2];
 
-    float3 normal = barycentrics.x * normal1
-        + barycentrics.y * normal2
-        + (1.0f - barycentrics.x - barycentrics.y) * normal0;
-
-    OptixTraversableHandle h = optixGetTransformListHandle(2);
-
-    float4 mW[3];
-    float4 mO[3];
-
-    normal = optixTransformNormalFromObjectToWorldSpace(normal);
+    const float3 normal = optixTransformNormalFromObjectToWorldSpace(
+        barycentrics.x * normal1 + barycentrics.y * normal2 + (1.0f - barycentrics.x - barycentrics.y) * normal0);
 
     const float3 P = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection() + normal * 0.0001f;
 

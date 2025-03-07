@@ -63,11 +63,11 @@ int main(int argc, char *argv[])
 
         std::vector<TransformFloats> transforms;
 
-        for (int dx = 0; dx < 1; ++dx) {
-            for (int dy = 0; dy < 1; ++dy) {
-                Transform t = Transform::translated((float)dx, 0.0, (float)dy);
-                          //    * Transform::rotated_y(M_PI)
-                //*Transform::rotated_x(-M_PI_2);
+        for (int dx = 0; dx < 10; ++dx) {
+            for (int dy = 0; dy < 10; ++dy) {
+                Transform t = Transform::translated((float)dx, 0.0, (float)dy)
+                              * Transform::rotated_y(M_PI)
+                *Transform::rotated_x(-M_PI_2);
 
                 std::cout << t;
                 //t = Transform::identity();
@@ -76,8 +76,6 @@ int main(int argc, char *argv[])
             }
         }
 
-        transforms.push_back((Transform::translated(1.0, 0, 0) * Transform::rotated_y(M_PI) * Transform::rotated_x(-M_PI_2)).m_matrix);
-        transforms.push_back((Transform::translated(2.0, 0, 0) ).m_matrix);
 
         InstanceGAS instances = InstanceGAS::from_trafos(device, triangles.get_gas_handle(), transforms);
         //
@@ -258,10 +256,10 @@ int main(int argc, char *argv[])
         cam.compute_uvw();
 
         std::vector<LightVariant> lights;
-        //lights.emplace_back(VolumetricLight({ 0.0f, 2.0f, 0.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
+        lights.emplace_back(VolumetricLight({ 0.0f, 2.0f, 0.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
         //lights.emplace_back(VolumetricLight({ 2.0f, 2.0f, 0.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
         //lights.emplace_back(VolumetricLight({ 2.0f, 2.0f, 2.0f }, 0.1f, { 0.1f, 0.08f, 0.08f }));
-        lights.emplace_back(DirectionalLight({ -1.0f, 1.0f, -1.0f }, { 1.1f, 1.1f, 1.1f }, 0.05f));
+        lights.emplace_back(DirectionalLight({ -1.0f, 1.0f, -1.0f }, { 0.1f, 0.1f, 0.1f }, 0.05f));
 
         std::vector<DiffuseMaterial> mats;
 
