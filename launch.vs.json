@@ -1,0 +1,28 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "imgui_test.exe (bin\\Release\\imgui_test.exe)",
+      "name": "imgui_test.exe (bin\\Release\\imgui_test.exe)",
+      "args": [
+        "-m",
+        "\u0022C:/Users/andiw/cpp/threed/robot.nbt\u0022",
+        "-w"
+      ]
+    },
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "imgui_test.exe (bin\\Debug\\imgui_test.exe)",
+      "name": "imgui_test.exe (bin\\Debug\\imgui_test.exe)",
+      "args": [
+        "-m",
+        "\u0022C:/Users/andiw/cpp/threed/robot.nbt\u0022",
+        "-w"
+      ]
+    }
+  ]
+}
